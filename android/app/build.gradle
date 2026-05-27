@@ -1,0 +1,31 @@
+apply plugin: "com.android.application"
+apply plugin: "com.facebook.react"
+// Aktivizojmë plugin-in e Google Services që të punojë Firebase Auth dhe Firestore
+apply plugin: "com.google.gms.google-services"
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    compileSdkVersion rootProject.ext.compileSdkVersion
+
+    namespace "com.prishtinaconnect"
+    defaultConfig {
+        applicationId "com.prishtinaconnect"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+    // Përfshirja e platformës native të Firebase për Android
+    implementation platform('com.google.firebase:firebase-bom:32.2.0')
+}
