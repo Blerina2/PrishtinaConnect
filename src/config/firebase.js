@@ -4,16 +4,17 @@ import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
     apiKey: "AIzaSyB8GCJ-if1ZUND0oazyeBzGjTsyx7Q9isg",
-    authDomain: "://firebaseapp.com", // rregulluar formati i autorizimit
+    authDomain: "://firebaseapp.com",
     projectId: "prishtina-connect",
     storageBucket: "prishtina-connect.firebasestorage.app",
     messagingSenderId: "423059141293",
     appId: "1:423059141293:web:869933a294fbdf28df6424"
 };
 
-// Inicializimi i Firebase
+// Inicializimi zyrtar i Firebase
 const app = initializeApp(firebaseConfig);
 
+// Eksportet e sakta me emrat tuaj origjinalë
 export const authInstance = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const dbInstance = getFirestore(app);
@@ -29,18 +30,10 @@ export const isValidPrishtinaStudent = (email) => {
 };
 
 /**
- * Nxjerr automatikisht fakultetin ose departamentin nga emaili i studentit
- * Shembull: blerina.beka.fiek@student.uni-pr.edu -> Kthen "FIEK"
- * Nëse emaili nuk ka ndarje, kthen "UP" si vlerë standarde.
+ * Funksioni Fallback
+ * Është lënë i zbrazët që të mos mbishkruajë apo detyrojë asnjë vlerë "FIEK" automatikisht.
+ * Fakulteti tani merret 100% i saktë nga ajo që zgjedh studenti në ekran.
  */
 export const extractFacultyFromEmail = (email) => {
-    if (!email) return "UP";
-    const namePart = email.split('@')[0].toLowerCase();
-
-    if (namePart.includes('fiek')) return 'FIEK';
-    if (namePart.includes('fshmn')) return 'FSHMN';
-    if (namePart.includes('fe')) return 'Ekonomik';
-    if (namePart.includes('fd')) return 'Juridik';
-
-    return 'FIEK'; // Vlerë e paracaktuar (Default) për testet tuaja demo
+    return "";
 };
