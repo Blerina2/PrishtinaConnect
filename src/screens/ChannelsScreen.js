@@ -7,9 +7,12 @@ export default function ChannelsScreen({ onSelectChannel }) {
     const [channels, setChannels] = useState([]);
     const [newChannelName, setNewChannelName] = useState('');
 
+    // SHTETET E REJA PËR KËRKIMIN (SEARCH)
+    const [searchChannel, setSearchChannel] = useState('');
+    const [searchStudent, setSearchStudent] = useState('');
+
     const studentFaculty = user?.faculty || 'FIEK';
 
-    // 1. KANALET ZYRTARE TË LËNDËVE (KRIJUAR MË PARË)
     const channelsDemo = [
         { id: 'ch1', name: 'Rrjeta Kompjuterike', allowedDepartment: 'FIEK' },
         { id: 'ch2', name: 'Inxhinieri Softuerike', allowedDepartment: 'FIEK' },
@@ -19,7 +22,6 @@ export default function ChannelsScreen({ onSelectChannel }) {
         { id: 'ch9', name: 'Njoftime të Përgjithshme UP', allowedDepartment: 'ALL' }
     ];
 
-    // 2. LISTA E RE E STUDENTËVE PËR BISEDË PRIVATE (DIRECT MESSENGER)
     const studentsDemo = [
         { id: 'dm_blerand', name: '👤 Blerand Krasniqi', faculty: 'FIEK', status: 'Online 🟢' },
         { id: 'dm_erza', name: '👤 Erza Gashi', faculty: 'Ekonomik', status: 'Online 🟢' },
@@ -48,6 +50,15 @@ export default function ChannelsScreen({ onSelectChannel }) {
         Alert.alert('Sukses 🎉', `Kanali u krijua për fakultetin [${studentFaculty}].`);
     };
 
+    // LOGJIKA E FILTRIMIT NË KOHË REALE PËR SEARCH BAR
+    const searchedChannels = channels.filter(ch =>
+        ch.name.toLowerCase().includes(searchChannel.toLowerCase())
+    );
+
+    const searchedStudents = studentsDemo.filter(st =>
+        st.name.toLowerCase().includes(searchStudent.toLowerCase())
+    );
+
     const themeStyles = {
         card: isDarkMode ? styles.darkCard : styles.lightCard,
         text: isDarkMode ? styles.darkText : styles.lightText,
@@ -58,7 +69,7 @@ export default function ChannelsScreen({ onSelectChannel }) {
     return (
         <ScrollView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]} contentContainerStyle={{ paddingBottom: 110 }}>
 
-            {/* ================= SEKSIONI 1: KRIJIMI I KANALEVE ================= */}
+            {/* Krijimi i Kanaleve */}
             <View style={[styles.createChannelBox, themeStyles.card]}>
                 <Text style={[styles.boxTitle, themeStyles.subText]}>Krijo kanal të ri në {studentFaculty}</Text>
                 <View style={styles.inputActionRow}>
@@ -75,9 +86,19 @@ export default function ChannelsScreen({ onSelectChannel }) {
                 </View>
             </View>
 
-            {/* ================= SEKSIONI 2: LISTA E KANALEVE (# LËNDËT) ================= */}
+            {/* ================= FUSHA E KËRKIMIT PËR LËNDËT 🔍 ================= */}
             <Text style={[styles.sectionTitle, themeStyles.text]}>🏛 Kanalet e Fakultetit Tënd</Text>
-            {channels.map((item) => (
+            <View style={styles.searchContainer}>
+                <TextInput
+                    style={[styles.searchInput, themeStyles.input]}
+                    placeholder="🔍 Kërko lëndën sipas emrit..."
+                    placeholderTextColor="#A0AEC0"
+                    value={searchChannel}
+                    onChangeText={setSearchChannel}
+                />
+            </View>
+
+            {searchedChannels.map((item) => (
                 <TouchableOpacity key={item.id} style={[styles.channelItem, themeStyles.card]} onPress={() => onSelectChannel(item)} activeOpacity={0.8}>
                     <View style={[styles.hashCircle, isDarkMode ? styles.darkHash : styles.lightHash]}>
                         <Text style={styles.channelHash}>#</Text>
@@ -94,9 +115,19 @@ export default function ChannelsScreen({ onSelectChannel }) {
                 </TouchableOpacity>
             ))}
 
-            {/* ================= SEKSIONI 3: MESSENGER (MESAZHET PRIVATE 💬) ================= */}
+            {/* ================= FUSHA E KËRKIMIT PËR MESSENGER-IN 🔍 ================= */}
             <Text style={[styles.sectionTitle, themeStyles.text, { marginTop: 25 }]}>💬 Mesazhet Private (Direct Messages)</Text>
-            {studentsDemo.map((student) => (
+            <View style={styles.searchContainer}>
+                <TextInput
+                    style={[styles.searchInput, themeStyles.input]}
+                    placeholder="🔍 Kërko studentët sipas emrit..."
+                    placeholderTextColor="#A0AEC0"
+                    value={searchStudent}
+                    onChangeText={setSearchStudent}
+                />
+            </View>
+
+            {searchedStudents.map((student) => (
                 <TouchableOpacity
                     key={student.id}
                     style={[styles.channelItem, themeStyles.card, { borderLeftWidth: 4, borderLeftColor: '#EEB902' }]}
@@ -140,17 +171,18 @@ const styles = StyleSheet.create({
     addChannelButton: { backgroundColor: '#0B2545', justifyContent: 'center', alignItems: 'center', height: 44, paddingHorizontal: 18, borderRadius: 12, borderBottomWidth: 2, borderBottomColor: '#EEB902' },
     addChannelText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
 
-    sectionTitle: { fontSize: 14, fontWeight: '800', marginHorizontal: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
+    // Stili i ri për Search Bar Box
+    searchContainer: { paddingHorizontal: 16, marginBottom: 10, width: '100%' },
+    searchInput: { width: '100%', height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 14, fontSize: 13, fontWeight: '500' },
+
+    sectionTitle: { fontSize: 13, fontWeight: '800', marginHorizontal: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
     channelItem: { flexDirection: 'row', alignItems: 'center', padding: 14, marginHorizontal: 16, marginVertical: 5, borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.01, elevation: 2, borderWidth: 1 },
     hashCircle: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
     channelHash: { fontSize: 18, fontWeight: '800', color: '#EEB902' },
     channelName: { fontSize: 14, fontWeight: '700' },
     studentSubText: { fontSize: 11, marginTop: 2 },
     badgeContainer: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
-    badgePublic: { backgroundColor: '#E6FFFA' },
-    badgePrivate: { backgroundColor: '#EBF8FF' },
-    lockBadge: { fontSize: 10, fontWeight: '700' },
-    textPublic: { color: '#319795' },
-    textPrivate: { color: '#2B6CB0' },
-    arrowIcon: { fontSize: 13, color: '#A0AEC0', fontWeight: '700' }
+    badgePublic: { backgroundColor: '#E6FFFA' },badgePrivate: { backgroundColor: '#EBF8FF' },
+    lockBadge: { fontSize: 10, fontWeight: '700' },textPublic: { color: '#319795' },
+    textPrivate: { color: '#2B6CB0' },arrowIcon: { fontSize: 13, color: '#A0AEC0', fontWeight: '700' }
 });
