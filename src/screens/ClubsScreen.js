@@ -4,46 +4,41 @@ import MessageBubble from '../components/MessageBubble';
 import { useAuth } from '../context/AuthContext';
 
 export default function ClubsScreen() {
-    const { user } = useAuth();
+    const { user, isDarkMode } = useAuth();
     const [activeClub, setActiveClub] = useState(null);
     const [clubMessages, setClubMessages] = useState([]);
     const [newMsg, setNewMsg] = useState('');
 
-    // Marrim të dhënat e studentit të kyçur lokal
     const currentStudentProfile = {
         email: user?.email || 'student@student.uni-pr.edu',
         department: user?.faculty || 'FIEK',
         uid: user?.uid || 'student_demo_id'
     };
 
-    // LISTA ZYRTARE E ZGJERUAR E KLUBEVE PËR TË GJITHA FAKULTETET E UP-SË
     const [clubs] = useState([
-        { id: 'c1', name: '🚀 IT-Network Expert Club', allowedDept: 'FIEK', icon: '💻', desc: 'Grupi ekskluziv për siguri në rrjeta, administrim sistemesh dhe inxhinieri softuerike.' },
-        { id: 'c2', name: '🤖 UP Robotics & AI Team', allowedDept: 'FIEK', icon: '🦾', desc: 'Zhvillimi i projekteve inovative në fushën e automatizimit dhe Inteligjencës Artificiale.' },
-        { id: 'c3', name: '📊 Shoqata e Ekonomistëve të Rinj', allowedDept: 'Ekonomik', icon: '📈', desc: 'Analiza makroekonomike, trajnime në kontabilitet dhe diskutime mbi tregjet financiare.' },
-        { id: 'c4', name: '⚖️ Klubi i Debatit Juridik - UP', allowedDept: 'Juridik', icon: '🏛', desc: 'Simulime të seancave gjyqësore, analiza të ligjeve dhe mbrojtja e të drejtave të studentëve.' },
-        { id: 'c5', name: '🔬 Kërkimet Shkencore FSHMN', allowedDept: 'FSHMN', icon: '🧪', desc: 'Grupi i biologëve, kimistëve dhe matematikanëve për projekte laboratorike.' },
-        { id: 'c6', name: '🩺 Portal i Mjekësisë Klinike', allowedDept: 'Mjekësi', icon: '🏥', desc: 'Diskutime mbi praktikat mjekësore, anatominë dhe përgatitjet për specializime.' },
-        { id: 'c7', name: '🏃‍♂️ Klubi Olimpik studentor DIF', allowedDept: 'DIF', icon: '🏆', desc: 'Organizimi i garave sportive universitare, rekreacionit dhe teorisë së stërvitjes.' },
-        { id: 'c8', name: '📢 Bashkimi Studentor i UP-së', allowedDept: 'ALL', icon: '🎓', desc: 'Organizimi i përgjithshëm studentor për të gjitha fakultetet e Universitetit të Prishtinës.' }
+        { id: 'c1', name: '🚀 IT-Network Expert Club', allowedDept: 'FIEK', icon: '🌐', desc: 'Grupi ekskluziv për siguri në rrjeta, administrim sistemesh.' },
+        { id: 'c2', name: '🤖 UP Robotics & AI Team', allowedDept: 'FIEK', icon: '🦾', desc: 'Zhvillimi i projekteve inovative në fushën e Inteligjencës Artificiale.' },
+        { id: 'c3', name: '📊 Shoqata e Ekonomistëve të Rinj', allowedDept: 'Ekonomik', icon: '📈', desc: 'Analiza makroekonomike, trajnime në kontabilitet dhe diskutime financiare.' },
+        { id: 'c4', name: '⚖️ Klubi i Debatit Juridik - UP', allowedDept: 'Juridik', icon: '🏛', desc: 'Simulime të seancave gjyqësore, analiza të ligjeve të reja.' },
+        { id: 'c5', name: '🔬 Kërkimet Shkencore FSHMN', allowedDept: 'FSHMN', icon: '🧪', desc: 'Grupi i biologëve, kimistëve dhe matematikanëve për laboratorë.' },
+        { id: 'c6', name: '🩺 Portal i Mjekësisë Klinike', allowedDept: 'Mjekësi', icon: '🏥', desc: 'Diskutime mbi praktikat mjekësore, anatominë universitare.' },
+        { id: 'c7', name: '🏃‍♂️ Klubi Olimpik studentor DIF', allowedDept: 'DIF', icon: '🏆', desc: 'Organizimi i garave sportive universitare dhe rekreacionit.' },
+        { id: 'c8', name: '📢 Bashkimi Studentor i UP-së', allowedDept: 'ALL', icon: '🎓', desc: 'Organizimi i përgjithshëm studentor për të gjitha fakultetet e UP-së.' }
     ]);
 
-    // Ngarkojmë mesazhe imagjinare fillestare sa për demo kur klikohet klubi
     useEffect(() => {
         if (!activeClub) return;
-
         setClubMessages([
             { id: 'cm1', text: `Mirëseerdhët në hapësirën zyrtare të klubit!`, email: 'profesor.up@student.uni-pr.edu', uid: '999' },
-            { id: 'cm2', text: `Përshëndetje kolegë, kur do të mbahet takimi i radhës?`, email: 'kolegu@student.uni-pr.edu', uid: '888' }
+            { id: 'cm2', text: `Përshëndetje kolegë, kur mbahet takimi?`, email: 'kolegu@student.uni-pr.edu', uid: '888' }
         ]);
     }, [activeClub]);
 
     const handleEnterClub = (club) => {
-        // RREGULLI STRIKT I IZOLIMIT: Ndalohet qasja nëse nuk është 'ALL' ose fakulteti i vetë studentit
         if (club.allowedDept !== 'ALL' && club.allowedDept !== currentStudentProfile.department) {
             Alert.alert(
                 'Qasja u Refuzua 🔒',
-                `Ky klub është ekskluziv! Vetëm studentët e fakultetit [${club.allowedDept}] kanë autorizim qasjeje. Ju jeni regjistruar në [${currentStudentProfile.department}].`
+                `Ky klub është ekskluziv! Vetëm studentët e [${club.allowedDept}] kanë qasje. Ju jeni në [${currentStudentProfile.department}].`
             );
             return;
         }
@@ -52,17 +47,15 @@ export default function ClubsScreen() {
 
     const handleSendClubMessage = () => {
         if (!newMsg.trim()) return;
-
-        const msgObj = {
-            id: 'm_' + Date.now(),
-            text: newMsg.trim(),
-            createdAt: new Date().toISOString(),
-            uid: currentStudentProfile.uid,
-            email: currentStudentProfile.email
-        };
-
+        const msgObj = { id: 'm_' + Date.now(), text: newMsg.trim(), createdAt: new Date().toISOString(), uid: currentStudentProfile.uid, email: currentStudentProfile.email };
         setClubMessages(prev => [msgObj, ...prev]);
         setNewMsg('');
+    };
+
+    const themeStyles = {
+        card: isDarkMode ? styles.darkCard : styles.lightCard,
+        text: isDarkMode ? styles.darkText : styles.lightText,
+        input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
 
     if (activeClub) {
@@ -85,17 +78,11 @@ export default function ClubsScreen() {
                     }}
                 />
 
-                <View style={styles.inputContainer}>
-                    <View style={styles.inputWrapper}>
-                        <TextInput
-                            style={styles.chatInput}
-                            placeholder={`Shkruaj në klub...`}
-                            placeholderTextColor="#A0AEC0"
-                            value={newMsg}
-                            onChangeText={setNewMsg}
-                        />
+                <View style={[styles.inputContainer, isDarkMode && { backgroundColor: '#1A202C' }]}>
+                    <View style={[styles.inputWrapper, isDarkMode && { backgroundColor: '#2D3748' }]}>
+                        <TextInput style={[styles.chatInput, isDarkMode && { color: '#FFFFFF' }]} placeholder={`Shkruaj në klub...`} placeholderTextColor="#A0AEC0" value={newMsg} onChangeText={setNewMsg} />
                         <TouchableOpacity style={styles.sendButton} onPress={handleSendClubMessage}>
-                            <Text style={styles.sendButtonText}>➔</Text>
+                            <Text style={styles.sendButtonText}>✈️</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -105,25 +92,25 @@ export default function ClubsScreen() {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Klubet Studentore të UP-së</Text>
+            <Text style={[styles.title, themeStyles.text]}>Klubet Studentore të UP-së</Text>
             <FlatList
                 data={clubs}
                 keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 25 }}
+                contentContainerStyle={{ paddingBottom: 110 }}
                 renderItem={({ item }) => (
-                    <View style={styles.clubCard}>
+                    <View style={[styles.clubCard, themeStyles.card]}>
                         <View style={styles.cardTop}>
-                            <View style={styles.iconCircle}>
+                            <View style={[styles.iconCircle, isDarkMode ? { backgroundColor: '#1A202C' } : { backgroundColor: '#F0F4F8' }]}>
                                 <Text style={styles.clubIconText}>{item.icon}</Text>
                             </View>
                             <View style={{ flex: 1, marginLeft: 12 }}>
-                                <Text style={styles.clubName}>{item.name}</Text>
+                                <Text style={[styles.clubName, themeStyles.text]}>{item.name}</Text>
                                 <Text style={[styles.lockText, item.allowedDept === 'ALL' ? styles.colorOpen : styles.colorClose]}>
-                                    {item.allowedDept === 'ALL' ? '🔓 Publik për të gjithë' : `🔒 Vetëm për ${item.allowedDept}`}
+                                    {item.allowedDept === 'ALL' ? '🔓 Publik' : `🔒 Vetëm për ${item.allowedDept}`}
                                 </Text>
                             </View>
                         </View>
-                        <Text style={styles.clubDesc}>{item.desc}</Text>
+                        <Text style={[styles.clubDesc, isDarkMode ? { color: '#CBD5E0' } : { color: '#4A5568' }]}>{item.desc}</Text>
                         <TouchableOpacity style={styles.joinButton} onPress={() => handleEnterClub(item)} activeOpacity={0.8}>
                             <Text style={styles.joinButtonText}>Bashkohu / Hyr ➔</Text>
                         </TouchableOpacity>
@@ -135,17 +122,22 @@ export default function ClubsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F0F4F8', padding: 14 },
-    title: { fontSize: 18, fontWeight: '800', color: '#0B2545', marginVertical: 12, letterSpacing: -0.4 },
-    clubCard: { backgroundColor: '#ffffff', padding: 16, borderRadius: 20, marginVertical: 8, shadowColor: '#1A365D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: '#F0F4F8' },
+    container: { flex: 1, padding: 14 },
+    lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
+    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    lightText: { color: '#0B2545' },
+    darkText: { color: '#FFFFFF' },
+
+    title: { fontSize: 18, fontWeight: '800', marginVertical: 12, letterSpacing: -0.4 },
+    clubCard: { padding: 16, borderRadius: 20, marginVertical: 8, shadowColor: '#000', shadowOpacity: 0.02, elevation: 3, borderWidth: 1 },
     cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    iconCircle: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center' },
+    iconCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
     clubIconText: { fontSize: 20 },
-    clubName: { fontSize: 15, fontWeight: '700', color: '#0B2545' },
+    clubName: { fontSize: 15, fontWeight: '700' },
     lockText: { fontSize: 11, fontWeight: '700', marginTop: 2 },
     colorOpen: { color: '#319795' },
     colorClose: { color: '#E53E3E' },
-    clubDesc: { fontSize: 13, color: '#4A5568', lineHeight: 19, marginBottom: 16, fontWeight: '500' },
+    clubDesc: { fontSize: 13, lineHeight: 19, marginBottom: 16, fontWeight: '500' },
     joinButton: { backgroundColor: '#0B2545', height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#EEB902' },
     joinButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
     clubHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#0B2545', borderBottomWidth: 2, borderBottomColor: '#EEB902', marginHorizontal: -14, marginTop: -14, marginBottom: 10 },

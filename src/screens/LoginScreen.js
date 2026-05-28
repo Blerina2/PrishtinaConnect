@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, Keyboard, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, Keyboard, ScrollView, Alert, ActivityIndicator, Platform } from 'react-native';
 import { isValidPrishtinaStudent } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen({ onLoginSuccess }) {
     const { setUser } = useAuth();
@@ -42,7 +43,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
         setAuthLoading(true);
 
-        setTimeout(() => {
+        setTimeout(async () => {
             const cleanEmail = email.toLowerCase().trim();
             const userDocId = cleanEmail.replace(/[^a-zA-Z0-9]/g, "");
 
@@ -52,12 +53,25 @@ export default function LoginScreen({ onLoginSuccess }) {
                 faculty: selectedFaculty
             };
 
-            setUser(loggedUser);
-            onLoginSuccess(loggedUser);
-            setAuthLoading(false);
+            try {
+                // ZGJIDHJA HIBRIDE: Ruajtja sinkrone për Web që eliminon bug-un e refresh-it
+                if (Platform.OS === 'web') {
+                    localStorage.setItem('@PrishtinaConnect:user', JSON.stringify(loggedUser));
+                } else {
+                    await AsyncStorage.setItem('@PrishtinaConnect:user', JSON.stringify(loggedUser));
+                }
 
-            if (isRegistering) {
-                Alert.alert('Sukses 🎉', `Mirëseerdhët! Profili u krijua për fakultetin: ${selectedFaculty}`);
+                setUser(loggedUser);
+                onLoginSuccess(loggedUser);
+
+                if (isRegistering) {
+                    Alert.alert('Sukses 🎉', `Mirëseerdhët! Profili u krijua për fakultetin: ${selectedFaculty}`);
+                }
+            } catch (e) {
+                console.log("Gabim gjatë ruajtjes së seancës:", e);
+                setError('Problem me ruajtjen lokale.');
+            } finally {
+                setAuthLoading(false);
             }
         }, 600);
     };
@@ -66,7 +80,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
             <View style={styles.card}>
 
-                {/* LOGOJA E RE VEKTORIALE E UP-së (E garantuar që do të shfaqet pa internet) */}
+                {/* Stema Vektoriale e UP-së */}
                 <View style={styles.logoBackground}>
                     <View style={styles.upVectorShield}>
                         <Text style={styles.upVectorText}>UP</Text>
@@ -150,13 +164,10 @@ export default function LoginScreen({ onLoginSuccess }) {
 const styles = StyleSheet.create({
     scrollContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F0F4F8', padding: 20 },
     card: { width: '100%', maxWidth: 400, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#1A365D', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
-
-    // Stilet e stemës së re zyrtare me kod
     logoBackground: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#0B2545', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 3, borderColor: '#EEB902', shadowColor: '#0B2545', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
     upVectorShield: { alignItems: 'center', justifyContent: 'center' },
     upVectorText: { color: '#FFFFFF', fontSize: 32, fontWeight: '900', letterSpacing: 1 },
     upGoldLine: { width: 40, height: 4, backgroundColor: '#EEB902', borderRadius: 2, marginTop: 2 },
-
     welcomeText: { fontSize: 24, fontWeight: '800', color: '#0B2545', letterSpacing: -0.5 },
     loginSubText: { fontSize: 13, color: '#718096', marginBottom: 25, textAlign: 'center', fontWeight: '500' },
     inputWrapper: { width: '100%', marginBottom: 16 },

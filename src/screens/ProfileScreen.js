@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Keyboard, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProfileScreen({ user, onLogout }) {
+    const { isDarkMode } = useAuth(); // Marrim vetëm gjendjen e temës
     const [myPosts, setMyPosts] = useState([]);
     const [newPostContent, setNewPostContent] = useState('');
     const [loadingPosts, setLoadingPosts] = useState(true);
@@ -38,11 +40,10 @@ export default function ProfileScreen({ user, onLogout }) {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
-            aspect: [1, 1],
             quality: 0.7,
         });
         if (!result.canceled) {
-            const selectedImg = result.assets[0].uri;
+            const selectedImg = result.assets.uri;
             try {
                 await AsyncStorage.setItem(`@PrishtinaConnect:avatar:${user?.email}`, selectedImg);
                 setProfileImage(selectedImg);
@@ -82,10 +83,18 @@ export default function ProfileScreen({ user, onLogout }) {
         }
     };
 
+    // Ndryshimi dinamik i stileve bazuar në Header Toggle
+    const themeStyles = {
+        container: isDarkMode ? styles.darkContainer : styles.lightContainer,
+        card: isDarkMode ? styles.darkCard : styles.lightCard,
+        text: isDarkMode ? styles.darkText : styles.lightText,
+        input: isDarkMode ? styles.darkInput : styles.lightInput,
+    };
+
     return (
-        <View style={styles.profileContainer}>
-            {/* Dashboard Card me Butonin e Çkyçjes Lart */}
-            <View style={styles.headerCard}>
+        <View style={[styles.profileContainer, themeStyles.container]}>
+            {/* Kartela Kryesore e Profilit */}
+            <View style={[styles.headerCard, themeStyles.card]}>
                 <TouchableOpacity style={styles.logoutTopButton} onPress={handleActualLogout} activeOpacity={0.7}>
                     <Text style={styles.logoutTopText}>🚪 Dalja</Text>
                 </TouchableOpacity>
@@ -103,7 +112,7 @@ export default function ProfileScreen({ user, onLogout }) {
                     </View>
                 </TouchableOpacity>
 
-                <Text style={styles.profileName}>{studentNickname}</Text>
+                <Text style={[styles.profileName, themeStyles.text]}>{studentNickname}</Text>
                 <View style={styles.badgeRow}>
                     <Text style={styles.statusBadge}>🏛 {studentFaculty}</Text>
                     <Text style={styles.regularBadge}>🛡 I Rregullt</Text>
@@ -111,11 +120,11 @@ export default function ProfileScreen({ user, onLogout }) {
                 <Text style={styles.emailText}>📍 {user?.email}</Text>
             </View>
 
-            {/* Post Creator */}
-            <View style={styles.createPostBox}>
+            {/* Krijimi i një postimi të ri */}
+            <View style={[styles.createPostBox, themeStyles.card]}>
                 <Text style={styles.sectionMiniTitle}>Publiko një mendim ose njoftim</Text>
                 <TextInput
-                    style={styles.postInput}
+                    style={[styles.postInput, themeStyles.input]}
                     placeholder="Çfarë po mendoni sot kolegë?..."
                     placeholderTextColor="#A0AEC0"
                     multiline
@@ -127,7 +136,7 @@ export default function ProfileScreen({ user, onLogout }) {
                 </TouchableOpacity>
             </View>
 
-            <Text style={styles.sectionTitle}>Postimet e Mia ({myPosts.length})</Text>
+            <Text style={[styles.sectionTitle, themeStyles.text]}>Postimet e Mia ({myPosts.length})</Text>
 
             {loadingPosts ? (
                 <ActivityIndicator size="small" color="#0B2545" style={{ marginTop: 20 }} />
@@ -138,9 +147,9 @@ export default function ProfileScreen({ user, onLogout }) {
                     style={{ width: '100%' }}
                     contentContainerStyle={{ paddingBottom: 110 }}
                     renderItem={({ item }) => (
-                        <View style={styles.postCard}>
+                        <View style={[styles.postCard, themeStyles.card]}>
                             <Text style={styles.postDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-                            <Text style={styles.postContent}>{item.content}</Text>
+                            <Text style={[styles.postContent, themeStyles.text]}>{item.content}</Text>
                         </View>
                     )}
                 />
@@ -150,8 +159,17 @@ export default function ProfileScreen({ user, onLogout }) {
 }
 
 const styles = StyleSheet.create({
-    profileContainer: { flex: 1, backgroundColor: '#F0F4F8', padding: 14, alignItems: 'center' },
-    headerCard: { width: '100%', backgroundColor: '#ffffff', padding: 20, borderRadius: 24, alignItems: 'center', shadowColor: '#1A365D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, marginBottom: 15, position: 'relative' },
+    lightContainer: { backgroundColor: '#F0F4F8' },
+    darkContainer: { backgroundColor: '#1A202C' },
+    lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
+    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    lightText: { color: '#0B2545' },
+    darkText: { color: '#FFFFFF' },
+    lightInput: { backgroundColor: '#F8FAFC', color: '#0B2545', borderColor: '#E2E8F0' },
+    darkInput: { backgroundColor: '#1A202C', color: '#FFFFFF', borderColor: '#4A5568' },
+
+    profileContainer: { flex: 1, padding: 14, alignItems: 'center' },
+    headerCard: { width: '100%', padding: 20, borderRadius: 24, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 2, marginBottom: 12, borderWidth: 1, position: 'relative' },
     logoutTopButton: { position: 'absolute', top: 15, right: 15, backgroundColor: '#FFF5F5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#FED7D7' },
     logoutTopText: { color: '#C53030', fontSize: 11, fontWeight: '700' },
     avatarButton: { position: 'relative', marginTop: 10 },
@@ -160,18 +178,17 @@ const styles = StyleSheet.create({
     avatarText: { color: '#ffffff', fontSize: 28, fontWeight: '800' },
     cameraBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#EEB902', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#ffffff' },
     cameraIcon: { fontSize: 10 },
-    profileName: { fontSize: 18, fontWeight: '800', color: '#0B2545', marginTop: 8 },
+    profileName: { fontSize: 18, fontWeight: '800', marginTop: 8 },
     badgeRow: { flexDirection: 'row', marginTop: 6, gap: 6 },
     statusBadge: { backgroundColor: '#EBF8FF', color: '#2B6CB0', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, fontSize: 11, fontWeight: '700' },
     regularBadge: { backgroundColor: '#E6FFFA', color: '#319795', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, fontSize: 11, fontWeight: '700' },
     emailText: { fontSize: 12, color: '#718096', marginTop: 10, fontWeight: '500' },
-    createPostBox: { width: '100%', backgroundColor: '#ffffff', padding: 14, borderRadius: 20, shadowColor: '#1A365D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, marginBottom: 15 },
-    sectionMiniTitle: { fontSize: 11, fontWeight: '700', color: '#4A5568', marginBottom: 8, textTransform: 'uppercase' },
-    postInput: { height: 55, borderColor: '#E2E8F0', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, color: '#0B2545', backgroundColor: '#F8FAFC', fontSize: 13 },
+    createPostBox: { width: '100%', padding: 14, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.03, elevation: 2, marginBottom: 15, borderWidth: 1 },
+    sectionMiniTitle: { fontSize: 11, fontWeight: '700', color: '#718096', marginBottom: 8, textTransform: 'uppercase' },
+    postInput: { height: 55, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13 },
     postButton: { backgroundColor: '#0B2545', height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginTop: 10, borderBottomWidth: 2, borderBottomColor: '#EEB902' },
     postButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 12 },
-    sectionTitle: { alignSelf: 'flex-start', fontSize: 14, fontWeight: '800', color: '#0B2545', marginBottom: 8 },
-    postCard: { width: '100%', backgroundColor: '#ffffff', padding: 14, borderRadius: 16, marginVertical: 5, borderWidth: 1, borderColor: '#F0F4F8' },
+    sectionTitle: { alignSelf: 'flex-start', fontSize: 14, fontWeight: '800', marginBottom: 8 },
+    postCard: { width: '100%', padding: 14, borderRadius: 16, marginVertical: 5, borderWidth: 1 },
     postDate: { fontSize: 10, color: '#A0AEC0', marginBottom: 6, fontWeight: '700' },
-    postContent: { fontSize: 13, color: '#2D3748', lineHeight: 19 }
-});
+    postContent: { fontSize: 13, lineHeight: 19 }});

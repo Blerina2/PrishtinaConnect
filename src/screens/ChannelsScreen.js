@@ -3,14 +3,13 @@ import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, Alert, A
 import { useAuth } from '../context/AuthContext';
 
 export default function ChannelsScreen({ onSelectChannel }) {
-    const { user } = useAuth();
+    const { user, isDarkMode } = useAuth();
     const [channels, setChannels] = useState([]);
     const [newChannelName, setNewChannelName] = useState('');
     const [loading, setLoading] = useState(false);
 
     const studentFaculty = user?.faculty || 'FIEK';
 
-    // Lista e kanaleve demo që shfaqen në mënyrë inteligjente sipas Fakultetit
     const channelsDemo = [
         { id: 'ch1', name: 'Rrjeta Kompjuterike', allowedDepartment: 'FIEK' },
         { id: 'ch2', name: 'Inxhinieri Softuerike', allowedDepartment: 'FIEK' },
@@ -24,7 +23,6 @@ export default function ChannelsScreen({ onSelectChannel }) {
     ];
 
     useEffect(() => {
-        // Filtrimi automatik në pajisje pa pasur nevojë për server
         const filtered = channelsDemo.filter(ch =>
             ch.allowedDepartment === studentFaculty || ch.allowedDepartment === 'ALL'
         );
@@ -45,13 +43,21 @@ export default function ChannelsScreen({ onSelectChannel }) {
         Alert.alert('Sukses 🎉', `Kanali u krijua për fakultetin [${studentFaculty}].`);
     };
 
+    // Stilet dinamike të temës
+    const themeStyles = {
+        card: isDarkMode ? styles.darkCard : styles.lightCard,
+        text: isDarkMode ? styles.darkText : styles.lightText,
+        input: isDarkMode ? styles.darkInput : styles.lightInput,
+    };
+
     return (
         <View style={styles.container}>
-            <View style={styles.createChannelBox}>
-                <Text style={styles.boxTitle}>Krijo kanal të ri në {studentFaculty}</Text>
+            {/* Box-i i Krijimit */}
+            <View style={[styles.createChannelBox, themeStyles.card]}>
+                <Text style={[styles.boxTitle, isDarkMode ? styles.darkSubText : styles.lightSubText]}>Krijo kanal të ri në {studentFaculty}</Text>
                 <View style={styles.inputActionRow}>
                     <TextInput
-                        style={styles.channelInput}
+                        style={[styles.channelInput, themeStyles.input]}
                         placeholder="Emri i lëndës (p.sh. Lënda-Re)..."
                         placeholderTextColor="#A0AEC0"
                         value={newChannelName}
@@ -63,17 +69,18 @@ export default function ChannelsScreen({ onSelectChannel }) {
                 </View>
             </View>
 
+            {/* Lista e Kanaleve */}
             <FlatList
                 data={channels}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContainer}
                 renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.channelItem} onPress={() => onSelectChannel(item)} activeOpacity={0.8}>
-                        <View style={styles.hashCircle}>
+                    <TouchableOpacity style={[styles.channelItem, themeStyles.card]} onPress={() => onSelectChannel(item)} activeOpacity={0.8}>
+                        <View style={[styles.hashCircle, isDarkMode ? styles.darkHash : styles.lightHash]}>
                             <Text style={styles.channelHash}>#</Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.channelName}>{item.name}</Text>
+                            <Text style={[styles.channelName, themeStyles.text]}>{item.name}</Text>
                             <View style={[styles.badgeContainer, item.allowedDepartment === 'ALL' ? styles.badgePublic : styles.badgePrivate]}>
                                 <Text style={[styles.lockBadge, item.allowedDepartment === 'ALL' ? styles.textPublic : styles.textPrivate]}>
                                     {item.allowedDepartment === 'ALL' ? '🔓 Publik për UP' : `🏛 ${item.allowedDepartment}`}
@@ -89,18 +96,29 @@ export default function ChannelsScreen({ onSelectChannel }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F0F4F8' },
-    createChannelBox: { padding: 16, backgroundColor: '#ffffff', borderBottomLeftRadius: 20, borderBottomRightRadius: 20, shadowColor: '#1A365D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 3, marginBottom: 10 },
-    boxTitle: { fontSize: 12, fontWeight: '700', color: '#4A5568', marginBottom: 8, textTransform: 'uppercase' },
+    container: { flex: 1 },
+    lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
+    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    lightText: { color: '#0B2545' },
+    darkText: { color: '#FFFFFF' },
+    lightSubText: { color: '#4A5568' },
+    darkSubText: { color: '#A0AEC0' },
+    lightInput: { backgroundColor: '#F8FAFC', color: '#0B2545', borderColor: '#E2E8F0' },
+    darkInput: { backgroundColor: '#1A202C', color: '#FFFFFF', borderColor: '#4A5568' },
+    lightHash: { backgroundColor: '#F0F4F8' },
+    darkHash: { backgroundColor: '#1A202C' },
+
+    createChannelBox: { padding: 16, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, shadowColor: '#000', shadowOpacity: 0.02, elevation: 3, marginBottom: 10, borderWidth: 1 },
+    boxTitle: { fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase' },
     inputActionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    channelInput: { flex: 1, height: 44, borderColor: '#E2E8F0', borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, color: '#0B2545', backgroundColor: '#F8FAFC', fontSize: 14, marginRight: 10, fontWeight: '500' },
+    channelInput: { flex: 1, height: 44, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, fontSize: 14, marginRight: 10, fontWeight: '500' },
     addChannelButton: { backgroundColor: '#0B2545', justifyContent: 'center', alignItems: 'center', height: 44, paddingHorizontal: 18, borderRadius: 12, borderBottomWidth: 2, borderBottomColor: '#EEB902' },
     addChannelText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
-    listContainer: { paddingHorizontal: 16, paddingBottom: 20 },
-    channelItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', padding: 16, marginVertical: 6, borderRadius: 16, shadowColor: '#1A365D', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
-    hashCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    listContainer: { paddingHorizontal: 16, paddingBottom: 110 },
+    channelItem: { flexDirection: 'row', alignItems: 'center', padding: 16, marginVertical: 6, borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.02, elevation: 2, borderWidth: 1 },
+    hashCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
     channelHash: { fontSize: 18, fontWeight: '800', color: '#EEB902' },
-    channelName: { fontSize: 15, color: '#0B2545', fontWeight: '700' },
+    channelName: { fontSize: 15, fontWeight: '700' },
     badgeContainer: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 5 },
     badgePublic: { backgroundColor: '#E6FFFA' },
     badgePrivate: { backgroundColor: '#EBF8FF' },
