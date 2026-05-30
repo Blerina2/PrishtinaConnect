@@ -1,220 +1,252 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import MessageBubble from '../components/MessageBubble';
 import { useAuth } from '../context/AuthContext';
-import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { db } from '../config/firebase';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 
-export default function ChatScreen({ selectedChannel, onBack }) {
+export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const { user, isDarkMode } = useAuth();
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    const [blockedUsers, setBlockedUsers] = useState([]);
+    const [requestStatus, setRequestStatus] = useState('accepted');
+    const [loading, setLoading] = useState(true);
+    const [showViberMenu, setShowViberMenu] = useState(false);
 
-    // SHTETET E REJA PËR SISTEMIN LOKAL TË REQUESTS
-    const [isAccepted, setIsAccepted] = useState(true);
-    const [loadingRequest, setLoadingRequest] = useState(false);
-
-    const currentUser = {
-        uid: user?.uid || 'student_demo_id',
-        email: user?.email || 'student@student.uni-pr.edu'
-    };
-
-    // Kontrolli automatik nëse biseda private është e pranuar apo është ende në pritje
     useEffect(() => {
-        const checkChatStatus = async () => {
-            if (selectedChannel?.name && selectedChannel.name.includes('Bisedë Private')) {
-                setLoadingRequest(true);
-                try {
-                    // Kontrollojmë në memorien lokale statusin e kësaj bisede specifike
-                    const status = await AsyncStorage.getItem(`@PrishtinaConnect:request:${selectedChannel.id}`);
-                    if (status === 'accepted') {
-                        setIsAccepted(true);
+        if (!selectedChannel?.id || !user?.uid) return;
+
+        if (!selectedChannel.isPrivate) {
+            setRequestStatus('accepted');
+            setLoading(false);
+        } else {
+            // Vëzhgimi live i kërkesës
+            const requestDocRef = doc(db, 'chat_requests', selectedChannel.id);
+            const unsubscribeRequest = onSnapshot(requestDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data.status === 'accepted') {
+                        setRequestStatus('accepted');
+                    } else if (data.senderId === user.uid) {
+                        setRequestStatus('pending');
                     } else {
-                        setIsAccepted(false); // Fillon si e bllokuar (Request) nëse nuk është pranuar ende
+                        setRequestStatus('incoming');
                     }
-                } catch (e) {
-                    console.log(e);
-                } finally {
-                    setLoadingRequest(false);
+                } else {
+                    setRequestStatus('none');
                 }
-            } else {
-                setIsAccepted(true); // Kanalet publike të lëndëve janë gjithmonë të pranuara automatikisht
-            }
-        };
+                setLoading(false);
+            }, (error) => {
+                console.log("Gabim te kërkesa:", error);
+                setLoading(false);
+            });
 
-        checkChatStatus();
-
-        if (selectedChannel?.id) {
-            setMessages([
-                { id: 'm1', text: `Përshëndetje! Kam nevojë për disa ligjërata të FIEK-ut, a mund të më ndihmosh?`, email: 'kolegu@student.uni-pr.edu', uid: '123', imageUri: null }
-            ]);
+            return () => unsubscribeRequest();
         }
-    }, [selectedChannel]);
+    }, [selectedChannel?.id, user?.uid]);
 
-    const handleSendMessage = () => {
-        if (!newMessage.trim()) return;
-        const msgObj = { id: 'm_' + Date.now(), text: newMessage.trim(), createdAt: new Date().toISOString(), uid: currentUser.uid, email: currentUser.email, imageUri: null };
-        setMessages((prevMessages) => [msgObj, ...prevMessages]);
-        setNewMessage('');
-    };
+    useEffect(() => {
+        if (!selectedChannel?.id) return;
 
-    const handleSendImage = async () => {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (permissionResult.granted === false) {
-            Alert.alert("Refuzuar 🔒", "Duhet të lejoni qasjen në galeri.");
-            return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 0.6,
+        // Vëzhgimi live i mesazheve në kohë reale
+        const q = query(collection(db, 'channels', selectedChannel.id, 'messages'), orderBy('createdAt', 'desc'));
+        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+            const list = [];
+            snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+            setMessages(list);
+        }, (error) => {
+            console.log("Gabim te mesazhet:", error);
         });
-        if (!result.canceled) {
-            const msgObj = { id: 'm_img_' + Date.now(), text: '', createdAt: new Date().toISOString(), uid: currentUser.uid, email: currentUser.email, imageUri: result.assets.uri };
-            setMessages((prevMessages) => [msgObj, ...prevMessages]);
+
+        return () => unsubscribeMessages();
+    }, [selectedChannel?.id]);
+
+    // RREGULLIMI SINTAKSOR 1: Përdorimi i .shift() që të kthehet në String të pastër dhe të mos bëjë crash
+    const formatNicknameSafe = (textInput) => {
+        if (!textInput) return 'Student';
+        const cleanStr = String(textInput);
+        if (cleanStr.includes('@')) {
+            const parts = cleanStr.split('@');
+            const partBeforeAt = parts.shift();
+            return partBeforeAt.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
         }
+        return cleanStr.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
 
-    // FUNKSIONI PËR PRANIMIN E KËRKESËS SË RE
-    const handleAcceptRequest = async () => {
+    // RREGULLIMI KRYESOR: Kur shkruan mesazh, automatikisht e bën bisedën 'accepted' që të dalë te My Chats
+    const handleSendMessage = async () => {
+        if (!newMessage.trim() || !user?.uid || !selectedChannel?.id) return;
+
+        const currentText = newMessage.trim();
+        setNewMessage('');
+
+        // Sa herë që shkruan mesazh, ulet statusi 'accepted' në Firestore që të dalë direkt te Tabi kryesor
         try {
-            await AsyncStorage.setItem(`@PrishtinaConnect:request:${selectedChannel.id}`, 'accepted');
-            setIsAccepted(true);
-            Alert.alert('Biseda u Zhbllokua 🎉', 'Tani mund të komunikoni lirisht me këtë student.');
+            await setDoc(doc(db, 'chat_requests', selectedChannel.id), {
+                status: 'accepted',
+                senderId: user.uid,
+                receiverId: selectedChannel.targetUser?.id || '',
+                createdAt: new Date().toISOString()
+            }, { merge: true });
+            setRequestStatus('accepted');
         } catch (e) {
-            console.log(e);
+            console.log("Gabim te krijimi i kërkesës:", e);
+        }
+
+        try {
+            await addDoc(collection(db, 'channels', selectedChannel.id, 'messages'), {
+                text: currentText,
+                createdAt: new Date().toISOString(),
+                uid: user.uid,
+                email: user.email || 'student@uni-pr.edu'
+            });
+        } catch (e) {
+            console.log("Gabim dërgimi:", e);
         }
     };
 
-    const handleRejectRequest = () => {
-        Alert.alert('Kërkesa u Refuzua 🚫', 'U ktheva prapa te lista e kanaleve.');
-        onBack();
+    const handleAccept = async () => {
+        if (!selectedChannel?.id) return;
+        try {
+            await setDoc(doc(db, 'chat_requests', selectedChannel.id), { status: 'accepted' }, { merge: true });
+            setRequestStatus('accepted');
+        } catch (e) { console.log(e); }
     };
 
-    const handleBlockUser = (targetUser) => {
-        if (targetUser.uid === currentUser.uid) return;
-        Alert.alert('Blloko Studentin 🚫', 'A jeni të sigurt?', [
-            { text: 'Anulo', style: 'cancel' },
-            { text: 'Blloko', style: 'destructive', onPress: () => { setBlockedUsers([...blockedUsers, targetUser.uid]); } }
+    const handleDeny = async () => {
+        if (!selectedChannel?.id) return;
+        try {
+            await deleteDoc(doc(db, 'chat_requests', selectedChannel.id));
+            onBack();
+        } catch (e) { console.log(e); }
+    };
+
+    const handleDeleteChatComplete = async () => {
+        if (!selectedChannel?.id) return;
+        setShowViberMenu(false);
+        Alert.alert("Fshij Bisedën 🗑️", "A jeni të sigurt që dëshironi ta fshini historikun e kësaj bisede?", [
+            { text: "Anulo", style: "cancel" },
+            { text: "Fshije", style: "destructive", onPress: async () => {
+                    try {
+                        await deleteDoc(doc(db, 'chat_requests', selectedChannel.id));
+                        const messagesSnapshot = await getDocs(collection(db, 'channels', selectedChannel.id, 'messages'));
+                        for (const msgDoc of messagesSnapshot.docs) {
+                            await deleteDoc(doc(db, 'channels', selectedChannel.id, 'messages', msgDoc.id));
+                        }
+                        onBack();
+                    } catch (e) { console.log(e); }
+                }}
         ]);
     };
+    if (!selectedChannel || !selectedChannel.id) {
+        return <View style={styles.center}><ActivityIndicator color="#0B2545" /></View>;
+    }
 
-    const filteredMessages = messages.filter(msg => !blockedUsers.includes(msg.uid));
-    if (loadingRequest) {
-        return (
-            <View style={[styles.container, styles.center, isDarkMode ? styles.darkBg : styles.lightBg]}>
-                <ActivityIndicator size="small" color="#EEB902" />
-            </View>
-        );
+    if (loading) {
+        return <View style={styles.center}><ActivityIndicator color="#0B2545" /></View>;
     }
 
     return (
         <KeyboardAvoidingView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <View style={[styles.channelHeader, isDarkMode ? styles.darkHeader : styles.lightHeader]}>
-                <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                    <Text style={styles.backButtonText}>⬅ Kanalet</Text>
-                </TouchableOpacity>
-                <View style={styles.titleWrapper}>
-                    <Text style={styles.channelTitle} numberOfLines={1}>{selectedChannel.name}</Text>
-                    <Text style={[styles.channelSubtitle, isDarkMode && { color: '#E2E8F0' }]}>
-                        {isAccepted ? 'Lidhje e Sigurt Universitare' : '🔒 Kërkesë e Pezulluar për Mesazh'}
-                    </Text>
+
+            {!hideHeader && (
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={onBack}><Text style={styles.headerText}>⬅ Kthehu</Text></TouchableOpacity>
+                    <Text style={styles.headerTitle}>{selectedChannel.name}</Text>
+
+                    {selectedChannel.isPrivate && (
+                        <View style={{ position: 'relative' }}>
+                            <TouchableOpacity onPress={() => setShowViberMenu(!showViberMenu)} style={styles.threeDotsBtn}>
+                                <Text style={styles.threeDotsTxt}>⋮</Text>
+                            </TouchableOpacity>
+                            {showViberMenu && (
+                                <View style={styles.viberDropdown}>
+                                    <TouchableOpacity style={styles.dropdownItem} onPress={handleDeleteChatComplete}>
+                                        <Text style={styles.dropdownDeleteTxt}>🗑️ Fshij Bisedën</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    )}
                 </View>
-            </View>
+            )}
 
-            {/* Lista e mesazheve shfaqet vetëm nëse kërkesa pranohet */}
-            {isAccepted ? (
-                <FlatList
-                    data={filteredMessages}
-                    keyExtractor={(item) => item.id}
-                    inverted
-                    renderItem={({ item }) => {
-                        const isMe = item.uid === currentUser.uid;
-                        return (
-                            <TouchableOpacity onLongPress={() => handleBlockUser(item)} activeOpacity={0.95}>
-                                <MessageBubble text={item.text} email={item.email} isMe={isMe} imageUri={item.imageUri} />
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
-            ) : (
-                /* PANEL I KËRKESAVE (REQUEST BOX) */
-                <View style={styles.requestContainer}>
-                    <View style={[styles.requestCard, isDarkMode ? styles.darkCard : styles.lightCard]}>
-                        <Text style={styles.requestIcon}>📩</Text>
-                        <Text style={[styles.requestTitle, isDarkMode ? styles.darkText : styles.lightText]}>Kërkesë e Re për Komunikim</Text>
-                        <Text style={styles.requestDesc}>Ky student nga Universiteti i Prishtinës dëshiron të fillojë një bisedë private me ju. Mesazhet e tij nuk do të shfaqen derisa ta pranoni kërkesën.</Text>
-
-                        <View style={styles.requestActionRow}>
-                            <TouchableOpacity style={styles.rejectButton} onPress={handleRejectRequest}>
-                                <Text style={styles.rejectButtonText}>Injoro / Mbylle</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptRequest}>
-                                <Text style={styles.acceptButtonText}>Prano Kërkesën 🎉</Text>
+            {hideHeader && selectedChannel.isPrivate && (
+                <View style={styles.embeddedHeaderControls}>
+                    <TouchableOpacity onPress={() => setShowViberMenu(!showViberMenu)} style={styles.embeddedThreeDots}>
+                        <Text style={{ fontWeight: '800', color: '#718096', fontSize: 11 }}>⚙️ Opsionet e Bisedës (⋮)</Text>
+                    </TouchableOpacity>
+                    {showViberMenu && (
+                        <View style={styles.embeddedDropdown}>
+                            <TouchableOpacity style={styles.dropdownItem} onPress={handleDeleteChatComplete}>
+                                <Text style={styles.dropdownDeleteTxt}>🗑️ Fshij krejt bisedën</Text>
                             </TouchableOpacity>
                         </View>
+                    )}
+                </View>
+            )}
+
+            <FlatList
+                data={messages}
+                keyExtractor={(item) => item.id}
+                inverted
+                renderItem={({ item }) => <MessageBubble text={item.text} email={item.email} isMe={item.uid === user.uid} />}
+            />
+
+            {requestStatus === 'incoming' && (
+                <View style={styles.alertBox}>
+                    <Text style={styles.alertTxt}>💬 Kërkesë e re për bisedë në kohë reale.</Text>
+                    <View style={styles.row}>
+                        <TouchableOpacity style={styles.denyBtn} onPress={handleDeny}><Text style={{ color: '#D93025', fontWeight: '700', fontSize: 11 }}>Injoro</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.acceptBtn} onPress={handleAccept}><Text style={{ color: '#FFF', fontWeight: '700', fontSize: 11 }}>Prano</Text></TouchableOpacity>
                     </View>
                 </View>
             )}
 
-            {/* Input Bar shfaqet VETËM nëse biseda është e pranuar zyrtarisht */}
-            {isAccepted && (
-                <View style={[styles.inputContainer, isDarkMode ? styles.darkInputContainer : styles.lightInputContainer]}>
-                    <View style={[styles.inputWrapper, isDarkMode ? styles.darkInputWrapper : styles.lightInputWrapper]}>
-                        <TouchableOpacity style={styles.mediaButton} onPress={handleSendImage}>
-                            <Text style={styles.mediaButtonText}>📷</Text>
-                        </TouchableOpacity>
-                        <TextInput style={[styles.chatInput, { color: isDarkMode ? '#FFFFFF' : '#0B2545' }]} placeholder="Shkruaj një mesazh..." placeholderTextColor="#A0AEC0" value={newMessage} onChangeText={setNewMessage} />
-                        <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
-                            <Text style={styles.sendButtonText}>✈️</Text>
-                        </TouchableOpacity>
-                    </View>
+            {requestStatus === 'pending' && (
+                <View style={styles.alertBox}>
+                    <Text style={styles.pendingTxt}>⏳ Në pritje të konfirmimit nga studenti...</Text>
+                </View>
+            )}
+
+            {(requestStatus === 'accepted' || requestStatus === 'none') && (
+                <View style={styles.inputRow}>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Shkruaj një mesazh..."
+                        value={newMessage}
+                        onChangeText={setNewMessage}
+                        placeholderTextColor="#A0AEC0"
+                        onSubmitEditing={handleSendMessage}
+                        blurOnSubmit={false}
+                    />
+                    <TouchableOpacity style={styles.sendBtn} onPress={handleSendMessage} activeOpacity={0.8}>
+                        <Text style={{ color: '#FFF', fontWeight: '700' }}>➔</Text>
+                    </TouchableOpacity>
                 </View>
             )}
         </KeyboardAvoidingView>
     );
 }
-
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    lightBg: { backgroundColor: '#F4F6F9' },
-    darkBg: { backgroundColor: '#1A202C' },
-    lightCard: { backgroundColor: '#ffffff', borderColor: '#E2E8F0' },
-    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
-    lightText: { color: '#0B2545' },
-    darkText: { color: '#FFFFFF' },
-
-    channelHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: '#EEB902' },
-    lightHeader: { backgroundColor: '#0B2545' },
-    darkHeader: { backgroundColor: '#2D3748' },
-    backButton: { marginRight: 15, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-    backButtonText: { color: '#ffffff', fontWeight: '700' },
-    titleWrapper: { flex: 1 },
-    channelTitle: { fontSize: 15, fontWeight: '800', color: '#ffffff' },
-    channelSubtitle: { fontSize: 10, color: '#EEB902', marginTop: 1 },
-
-    inputContainer: { padding: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
-    lightInputContainer: { backgroundColor: '#ffffff' },
-    darkInputContainer: { backgroundColor: '#2D3748' },
-    inputWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 6, paddingVertical: 4 },
-    lightInputWrapper: { backgroundColor: '#F0F4F8' },
-    darkInputWrapper: { backgroundColor: '#1A202C' },
-    chatInput: { flex: 1, height: 40, paddingHorizontal: 10, fontSize: 14 },
-    mediaButton: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', marginRight: 4 },
-    mediaButtonText: { fontSize: 18 },
-    sendButton: { width: 36, height: 36, backgroundColor: '#0B2545', borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-    sendButtonText: { color: '#ffffff', fontWeight: 'bold' },
-
-    requestContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-    requestCard: { width: '100%', maxWidth: 360, padding: 24, borderRadius: 24, alignItems: 'center', borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.03, elevation: 4 },
-    requestIcon: { fontSize: 36, marginBottom: 12 },
-    requestTitle: { fontSize: 16, fontWeight: '800', marginBottom: 8 },
-    requestDesc: { fontSize: 12, color: '#718096', lineHeight: 18, textAlign: 'center', marginBottom: 20, fontWeight: '500' },
-    requestActionRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 10 },
-    rejectButton: { flex: 1, height: 40, backgroundColor: '#FFF5F5', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#FED7D7' },
-    rejectButtonText: { color: '#E53E3E', fontSize: 12, fontWeight: '700' },
-    acceptButton: { flex: 1, height: 40, backgroundColor: '#0B2545', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#EEB902' },
-    acceptButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '700' }
+    container: { flex: 1, backgroundColor: '#FFF' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    lightBg: { backgroundColor: '#FFF' }, darkBg: { backgroundColor: '#1A202C' },
+    header: { height: 50, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, zIndex: 100 },
+    headerText: { color: '#FFF', fontWeight: '700' }, headerTitle: { color: '#FFF', fontWeight: '700' },
+    threeDotsBtn: { paddingHorizontal: 8, paddingVertical: 4 }, threeDotsTxt: { color: '#FFF', fontSize: 18, fontWeight: '900' },
+    viberDropdown: { position: 'absolute', top: 32, right: 0, backgroundColor: '#FFF', width: 140, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', elevation: 5, zIndex: 99999, padding: 4 },
+    dropdownItem: { padding: 10, borderRadius: 6, width: '100%' },
+    dropdownDeleteTxt: { color: '#C53030', fontSize: 12, fontWeight: '700' },
+    embeddedHeaderControls: { position: 'relative', width: '100%', zIndex: 99 },
+    embeddedThreeDots: { padding: 6, backgroundColor: '#F8FAFC', alignItems: 'center', borderBottomWidth: 1, borderColor: '#E2E8F0' },
+    embeddedDropdown: { backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', padding: 2 },
+    inputRow: { flexDirection: 'row', padding: 8, alignItems: 'center', backgroundColor: '#F0F4F8', borderTopWidth: 1, borderColor: '#E2E8F0' },
+    input: { flex: 1, height: 34, backgroundColor: '#FFF', borderRadius: 17, paddingHorizontal: 12, fontSize: 13, borderWidth: 1, borderColor: '#CCD0D5', color: '#000' },
+    sendBtn: { width: 34, height: 34, backgroundColor: '#0B2545', borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginLeft: 6 },
+    alertBox: { padding: 12, backgroundColor: '#F8FAFC', borderTopWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', width: '100%' },
+    alertTxt: { fontWeight: '700', fontSize: 12, marginBottom: 8, color: '#2D3748' }, pendingTxt: { color: '#718096', fontSize: 11, fontWeight: '600', textAlign: 'center' },
+    row: { flexDirection: 'row', gap: 8, width: '100%' },
+    denyBtn: { flex: 1, height: 34, backgroundColor: '#FCE8E6', borderRadius: 6, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#FAD2CF' },
+    acceptBtn: { flex: 1, height: 34, backgroundColor: '#0B2545', borderRadius: 6, justifyContent: 'center', alignItems: 'center' }
 });

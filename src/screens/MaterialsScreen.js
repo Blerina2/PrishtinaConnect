@@ -1,95 +1,89 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Keyboard, Linking } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../config/firebase';
+import { collection, addDoc, getDocs, query, orderBy, where } from 'firebase/firestore';
 
 export default function MaterialsScreen() {
     const { user, isDarkMode } = useAuth();
     const [materials, setMaterials] = useState([]);
-    const [newContent, setNewContent] = useState('');
-    const [selectedTag, setSelectedTag] = useState('Material');
+    const [title, setTitle] = useState('');
+    const [linkUrl, setLinkUrl] = useState('');
+    const [selectedType, setSelectedType] = useState('Drive 📁'); // Kategoria fillestare
     const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
 
-    const studentFaculty = user?.faculty || 'UP';
+    const studentFaculty = user?.faculty || 'FIEK';
 
-    const tags = [
-        { id: 'Material', icon: '🔗' },
-        { id: 'Detyrë', icon: '📝' },
-        { id: 'Provim', icon: '📚' },
-        { id: 'Njoftim', icon: '📢' }
+    const llojet = [
+        { id: 'Drive 📁', label: 'Google Drive' },
+        { id: 'Test 📝', label: 'Teste / Kuize' },
+        { id: 'Foto 📸', label: 'Foto Provimi' }
     ];
 
-    useEffect(() => {
-        const loadLocalMaterials = async () => {
-            try {
-                const stored = await AsyncStorage.getItem(`@PrishtinaConnect:materials:${user?.email}`);
-                let loadedMaterials = [];
-
-                if (stored != null) {
-                    loadedMaterials = JSON.parse(stored);
-                } else {
-                    // LINKU YT I VËRTETË: Vendoset si material fillestar
-                    loadedMaterials = [
-                        {
-                            id: 'mat_fiek_drive',
-                            content: 'Koleksioni zyrtar i materialeve dhe ligjëratave të FIEK në Google Drive.',
-                            tag: 'Material',
-                            linkUrl: 'https://google.com',
-                            faculty: 'FIEK', // Mbrohet në nivel fakulteti
-                            createdAt: new Date().toISOString()
-                        }
-                    ];
-                }
-
-                // KORRIGJIMI: Filtrojmë materialet në kohë reale (Studenti i FIEK-ut e sheh, të tjerët jo)
-                const filteredMaterials = loadedMaterials.filter(mat =>
-                    !mat.faculty || mat.faculty === studentFaculty || mat.faculty === 'ALL'
-                );
-
-                setMaterials(filteredMaterials);
-            } catch (e) {
-                console.log(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        if (user?.email) loadLocalMaterials();
-    }, [user, studentFaculty]);
-
-    const extractUrl = (text) => {
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        const match = text.match(urlRegex);
-        return match ? match : null;
+    // Ngarkimi i shpejtë i materialeve pa bllokuar uebin
+    const loadMaterials = async () => {
+        setLoading(true);
+        try {
+            // FILTRIMI I RREPTË: Merr vetëm materialet që i përkasin fakultetit të studentit të kyçur
+            const q = query(
+                collection(db, 'materials'),
+                where('faculty', '==', studentFaculty),
+                orderBy('createdAt', 'desc')
+            );
+            const querySnapshot = await getDocs(q);
+            const list = [];
+            querySnapshot.forEach((doc) => {
+                list.push({ id: doc.id, ...doc.data() });
+            });
+            setMaterials(list);
+        } catch (e) {
+            console.error("Gabim gjatë ngarkimit të materialeve:", e);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleCreateMaterial = async () => {
-        if (!newContent.trim()) return;
-        Keyboard.dismiss();
+    useEffect(() => {
+        if (studentFaculty) {
+            loadMaterials();
+        }
+    }, [studentFaculty]);
 
-        const detectedUrl = extractUrl(newContent);
+    const handleUploadMaterial = async () => {
+        if (!title.trim() || !linkUrl.trim()) {
+            Alert.alert("Gabim", "Ju lutem plotësoni titullin dhe linkun.");
+            return;
+        }
 
-        const matObj = {
-            id: 'mat_' + Date.now(),
-            content: newContent.trim(),
-            tag: selectedTag,
-            linkUrl: detectedUrl,
-            faculty: studentFaculty, // Çdo material i ri që krijohet, izolohet për këtë fakultet
-            createdAt: new Date().toISOString()
-        };
-
-        const updated = [matObj, ...materials];
+        setSubmitting(true);
         try {
-            await AsyncStorage.setItem(`@PrishtinaConnect:materials:${user?.email}`, JSON.stringify(updated));
-            setMaterials(updated);
-            setNewContent('');
-            Alert.alert('Sukses 🎉', `Burimi akademik u nda vetëm për përdoruesit e [${studentFaculty}].`);
+            const matObj = {
+                title: title.trim(),
+                linkUrl: linkUrl.trim(),
+                type: selectedType,
+                faculty: studentFaculty, // Ruhet me emrin e fakultetit specifik
+                uploadedBy: user?.email ? user.email.split('@')[0] : 'Student',
+                createdAt: new Date().toISOString()
+            };
+
+            await addDoc(collection(db, 'materials'), matObj);
+            setTitle('');
+            setLinkUrl('');
+
+            // Rifresko listën menjëherë pas postimit
+            await loadMaterials();
+            Alert.alert("Sukses 🎉", "Materiali akademik u nda me sukses!");
         } catch (err) {
-            console.log(err);
+            console.error(err);
+            Alert.alert("Gabim", "Ndodhi një problem gjatë postimit.");
+        } finally {
+            setSubmitting(false);
         }
     };
 
     const handleOpenLink = (url) => {
-        Linking.openURL(url).catch(() => Alert.alert("Gabim", "Nuk mund të hapet ky link."));
+        Linking.openURL(url).catch(() => Alert.alert("Gabim", "Nuk mund të hapet ky link. Sigurohuni që fillon me http:// ose https://"));
     };
 
     const themeStyles = {
@@ -98,103 +92,124 @@ export default function MaterialsScreen() {
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
 
-    if (loading) {
-        return (
-            <View style={[styles.center, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
-                <ActivityIndicator size="small" color="#EEB902" />
-            </View>
-        );
-    }
-
     return (
-        <View style={[styles.container, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
-            <Text style={[styles.title, themeStyles.text]}>Hapësira e Burimeve [{studentFaculty}]</Text>
+        <View style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]}>
+            <View style={styles.headerRow}>
+                <Text style={[styles.title, themeStyles.text]}>📚 Burimet Akademike [{studentFaculty}]</Text>
+                <TouchableOpacity style={styles.refreshBtn} onPress={loadMaterials}>
+                    <Text style={styles.refreshBtnText}>🔄 Rifresko</Text>
+                </TouchableOpacity>
+            </View>
 
-            <View style={[styles.createBox, themeStyles.card]}>
-                <Text style={styles.miniTitle}>Zgjedh Kategorinë:</Text>
-                <View style={styles.tagSelectorRow}>
-                    {tags.map((t) => (
+            {/* KUTIA E POSTIMIT TË MATERIALEVE */}
+            <View style={[styles.uploadBox, themeStyles.card]}>
+                <Text style={styles.miniTitle}>Zgjedh llojin e materialit:</Text>
+                <View style={styles.typeSelectorRow}>
+                    {llojet.map((t) => (
                         <TouchableOpacity
                             key={t.id}
-                            style={[styles.tagBadgeButton, selectedTag === t.id && styles.tagBadgeActive]}
-                            onPress={() => setSelectedTag(t.id)}
+                            style={[styles.typeButton, selectedType === t.id && styles.typeButtonActive]}
+                            onPress={() => setSelectedType(t.id)}
                         >
-                            <Text style={styles.tagBadgeText}>{t.icon} {t.id}</Text>
+                            <Text style={[styles.typeButtonText, selectedType === t.id && styles.typeButtonTextActive]}>{t.id}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
 
                 <TextInput
-                    style={[styles.postInput, themeStyles.input]}
-                    placeholder="Shkruaj njoftimin ose shto një link akademik..."
+                    style={[styles.input, themeStyles.input]}
+                    placeholder="Emri i lëndës ose përshkrimi (p.sh. Matematika 1 - Afati Janar)"
+                    value={title}
+                    onChangeText={setTitle}
                     placeholderTextColor="#A0AEC0"
-                    multiline
-                    value={newContent}
-                    onChangeText={setNewContent}
                 />
-                <TouchableOpacity style={styles.postButton} onPress={handleCreateMaterial} activeOpacity={0.8}>
-                    <Text style={styles.postButtonText}>Shpërndaj në {studentFaculty} ➔</Text>
+
+                <TextInput
+                    style={[styles.input, themeStyles.input, { marginTop: 8 }]}
+                    placeholder="Linku i Google Drive ose i Fotos (https://...)"
+                    value={linkUrl}
+                    onChangeText={setLinkUrl}
+                    placeholderTextColor="#A0AEC0"
+                    autoCapitalize="none"
+                />
+
+                <TouchableOpacity style={styles.btn} onPress={handleUploadMaterial} disabled={submitting}>
+                    {submitting ? (
+                        <ActivityIndicator color="#FFF" />
+                    ) : (
+                        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Shpërndaj me studentët e {studentFaculty} ➔</Text>
+                    )}
                 </TouchableOpacity>
             </View>
 
-            <FlatList
-                data={materials}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 110 }}
-                renderItem={({ item }) => (
-                    <View style={[styles.postCard, themeStyles.card]}>
-                        <View style={styles.postCardHeader}>
-                            <Text style={styles.postDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-                            <View style={styles.activeTagBadge}>
-                                <Text style={styles.activeTagText}>#{item.tag}</Text>
-                            </View>
-                        </View>
-                        <Text style={[styles.postContent, themeStyles.text]}>{item.content}</Text>
-                        {item.linkUrl ? (
-                            <TouchableOpacity style={styles.linkCard} onPress={() => handleOpenLink(item.linkUrl)} activeOpacity={0.8}>
-                                <Text style={styles.linkCardIcon}>🔗</Text>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.linkCardTitle}>Hap Drive-in e Materialeve</Text>
-                                    <Text style={styles.linkCardUrl} numberOfLines={1}>{item.linkUrl}</Text>
+            {/* LISTA E MATERIALEVE ENTIRELY ISOLATED */}
+            {loading ? (
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color="#0B2545" />
+                    <Text style={{ marginTop: 10, color: '#A0AEC0', fontWeight: '500' }}>Duke ngarkuar materialet ekskluzive...</Text>
+                </View>
+            ) : materials.length === 0 ? (
+                <Text style={styles.emptyText}>Nuk ka ende materiale të ndarë për fakultetin {studentFaculty}. Bëhu i pari që ndan një Drive ose Foto!</Text>
+            ) : (
+                <FlatList
+                    data={materials}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={{ paddingBottom: 110 }}
+                    renderItem={({ item }) => (
+                        <View style={[styles.matCard, themeStyles.card]}>
+                            <View style={styles.matCardHeader}>
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>{item.type}</Text>
                                 </View>
+                                <Text style={styles.matDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+                            </View>
+
+                            <Text style={[styles.matTitle, themeStyles.text]}>{item.title}</Text>
+                            <Text style={styles.matAuthor}>👤 Nga: {item.uploadedBy}</Text>
+
+                            <TouchableOpacity style={styles.linkButton} onPress={() => handleOpenLink(item.linkUrl)}>
+                                <Text style={styles.linkButtonText}>Hap Burimin Zyrtar 🔗</Text>
                             </TouchableOpacity>
-                        ) : null}
-                    </View>
-                )}
-            />
+                        </View>
+                    )}
+                />
+            )}
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 14 },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    lightContainer: { backgroundColor: '#F0F4F8' },
-    darkContainer: { backgroundColor: '#1A202C' },
-    lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
-    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
-    lightText: { color: '#0B2545' },
-    darkText: { color: '#FFFFFF' },
-    lightInput: { backgroundColor: '#F8FAFC', color: '#0B2545', borderColor: '#E2E8F0' },
-    darkInput: { backgroundColor: '#1A202C', color: '#FFFFFF', borderColor: '#4A5568' },
-    title: { fontSize: 18, fontWeight: '800', marginVertical: 12, letterSpacing: -0.4 },
-    createBox: { padding: 14, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.03, elevation: 2, marginBottom: 15, borderWidth: 1 },
+    container: { flex: 1, padding: 16 },
+    lightBg: { backgroundColor: '#F0F4F8' }, darkBg: { backgroundColor: '#1A202C' },
+    lightCard: { backgroundColor: '#FFF', borderColor: '#E2E8F0' }, darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    lightText: { color: '#0B2545' }, darkText: { color: '#FFFFFF' },
+    lightInput: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', color: '#0B2545' }, darkInput: { backgroundColor: '#1A202C', borderColor: '#4A5568', color: '#FFFFFF' },
+
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    title: { fontSize: 16, fontWeight: '800' },
+    refreshBtn: { backgroundColor: 'rgba(11, 37, 69, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+    refreshBtnText: { color: '#0B2545', fontSize: 12, fontWeight: '700' },
+
+    uploadBox: { padding: 15, borderRadius: 16, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.03, elevation: 3, marginBottom: 15 },
     miniTitle: { fontSize: 11, fontWeight: '700', color: '#718096', marginBottom: 8, textTransform: 'uppercase' },
-    tagSelectorRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, width: '100%' },
-    tagBadgeButton: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#F0F4F8', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-    tagBadgeActive: { backgroundColor: '#EEB902', borderColor: '#EEB902' },
-    tagBadgeText: { fontSize: 11, fontWeight: '700', color: '#0B2545' },
-    postInput: { height: 55, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: '500' },
-    postButton: { backgroundColor: '#0B2545', height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 10, borderBottomWidth: 2, borderBottomColor: '#EEB902' },
-    postButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
-    postCard: { width: '100%', padding: 14, borderRadius: 16, marginVertical: 5, borderWidth: 1 },
-    postCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-    postDate: { fontSize: 10, color: '#A0AEC0', fontWeight: '700' },
-    activeTagBadge: { backgroundColor: '#EBF8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    activeTagText: { fontSize: 10, fontWeight: '700', color: '#2B6CB0' },
-    postContent: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
-    linkCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10, marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0', borderLeftWidth: 4, borderLeftColor: '#0B2545' },
-    linkCardIcon: { fontSize: 16, marginRight: 10 },
-    linkCardTitle: { fontSize: 12, fontWeight: '700', color: '#0B2545' },
-    linkCardUrl: { fontSize: 11, color: '#3182CE', marginTop: 1, textDecorationLine: 'underline' }
+    typeSelectorRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, gap: 6 },
+    typeButton: { flex: 1, paddingVertical: 8, backgroundColor: '#F0F4F8', borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
+    typeButtonActive: { backgroundColor: '#EEB902', borderColor: '#EEB902' },
+    typeButtonText: { fontSize: 11, fontWeight: '700', color: '#0B2545' },
+    typeButtonTextActive: { color: '#0B2545', fontWeight: '800' },
+
+    input: { height: 42, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13, fontWeight: '500' },
+    btn: { marginTop: 12, backgroundColor: '#0B2545', height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 30 },
+    emptyText: { textAlign: 'center', color: '#A0AEC0', marginTop: 30, fontSize: 13, lineHeight: 20, paddingHorizontal: 20 },
+    matCard: { padding: 16, borderRadius: 14, marginVertical: 6, borderWidth: 1, elevation: 2 },
+    matCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    badge: { backgroundColor: '#EBF8FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    badgeText: { fontSize: 10, fontWeight: '800', color: '#2B6CB0' },
+    matDate: { fontSize: 10, color: '#A0AEC0', fontWeight: '700' },
+    matTitle: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
+    matAuthor: { fontSize: 11, color: '#718096', marginTop: 4, fontWeight: '600' },
+    linkButton: { marginTop: 12, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', padding: 10, borderRadius: 8, alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#0B2545' },
+    linkButtonText: { color: '#0B2545', fontWeight: '700', fontSize: 12 }
 });

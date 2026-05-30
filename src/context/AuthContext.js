@@ -1,4 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { db, auth } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -10,52 +13,49 @@ export function AuthProvider({ children }) {
     const [isDarkMode, setIsDarkMode] = useState(false);
 
     useEffect(() => {
-        const initializeAuthAndTheme = async () => {
+        const loadTheme = async () => {
             try {
-                // ZGJIDHJA PËR WEB: Nëse jemi në Web, përdorim direkt localStorage të shfletuesit që është instant
-                if (Platform.OS === 'web') {
-                    const storedUser = localStorage.getItem('@PrishtinaConnect:user');
-                    if (storedUser) {
-                        setUser(JSON.parse(storedUser));
-                    }
-
-                    const storedTheme = localStorage.getItem('@PrishtinaConnect:theme');
-                    if (storedTheme) {
-                        setIsDarkMode(JSON.parse(storedTheme));
-                    }
-                } else {
-                    // Nëse jemi në Telefon (Android/iOS), përdorim AsyncStorage si më parë
-                    const jsonUser = await AsyncStorage.getItem('@PrishtinaConnect:user');
-                    if (jsonUser != null) {
-                        setUser(JSON.parse(jsonUser));
-                    }
-
-                    const storedTheme = await AsyncStorage.getItem('@PrishtinaConnect:theme');
-                    if (storedTheme != null) {
-                        setIsDarkMode(JSON.parse(storedTheme));
-                    }
-                }
+                const storedTheme = Platform.OS === 'web'
+                    ? localStorage.getItem('@PrishtinaConnect:theme')
+                    : await AsyncStorage.getItem('@PrishtinaConnect:theme');
+                if (storedTheme) setIsDarkMode(JSON.parse(storedTheme));
             } catch (e) {
-                console.log("Gabim gjatë leximit të seancës:", e);
-            } finally {
-                setLoading(false); // Efikim loading vetëm kur përfundon leximi
+                console.log("Gabim me temën:", e);
             }
         };
-        initializeAuthAndTheme();
+        loadTheme();
+
+        // Echtzeit-Listener: Reagiert SOFORT auf Login/Logout ohne Refresh
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setLoading(true);
+            if (firebaseUser) {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+                    if (userDoc.exists()) {
+                        setUser({ uid: firebaseUser.uid, ...userDoc.data() });
+                    } else {
+                        setUser({ uid: firebaseUser.uid, email: firebaseUser.email, faculty: 'FIEK' });
+                    }
+                } catch (e) {
+                    console.log("Gabim gjatë leximit të profilit:", e);
+                    setUser({ uid: firebaseUser.uid, email: firebaseUser.email, faculty: 'FIEK' });
+                }
+            } else {
+                setUser(null);
+            }
+            setLoading(false);
+        });
+
+        return unsubscribe;
     }, []);
 
     const toggleTheme = async () => {
-        try {
-            const nextTheme = !isDarkMode;
-            setIsDarkMode(nextTheme);
-
-            if (Platform.OS === 'web') {
-                localStorage.setItem('@PrishtinaConnect:theme', JSON.stringify(nextTheme));
-            } else {
-                await AsyncStorage.setItem('@PrishtinaConnect:theme', JSON.stringify(nextTheme));
-            }
-        } catch (e) {
-            console.log("Gabim gjatë ruajtjes së temës:", e);
+        const nextTheme = !isDarkMode;
+        setIsDarkMode(nextTheme);
+        if (Platform.OS === 'web') {
+            localStorage.setItem('@PrishtinaConnect:theme', JSON.stringify(nextTheme));
+        } else {
+            await AsyncStorage.setItem('@PrishtinaConnect:theme', JSON.stringify(nextTheme));
         }
     };
 
