@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Modal, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firebase';
-import { collection, getDocs, query, where, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, deleteDoc, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import ChatScreen from './ChatScreen';
 
 export default function ChannelsScreen() {
@@ -15,10 +15,7 @@ export default function ChannelsScreen() {
     const [searchStudent, setSearchStudent] = useState('');
     const [fetching, setFetching] = useState(true);
 
-    // Tabet kryesore të mëdha lart
     const [activePrivateTab, setActivePrivateTab] = useState('friends');
-
-    // Nën-tabet kompakte horizontale brenda "Miqtë e Mi"
     const [activeSubFriendTab, setActiveSubFriendTab] = useState('my_chats');
 
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -45,26 +42,30 @@ export default function ChannelsScreen() {
     const filteredChannels = channelsDataPool.filter(ch =>
         ch.department === studentFaculty || ch.department === 'ALL'
     );
-
     useEffect(() => {
         if (!user?.uid) return;
         const q = query(collection(db, 'chat_requests'));
 
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const reqs = [];
             snapshot.forEach((doc) => { reqs.push({ id: doc.id, ...doc.data() }); });
             setChatRequests(reqs);
-            if (usersList.length > 0) { filterAllSections(usersList, reqs); }
+            if (usersList && usersList.length > 0) { filterAllSections(usersList, reqs); }
         });
 
         const fetchStudents = async () => {
             try {
                 const querySnapshot = await getDocs(query(collection(db, 'users'), where('email', '!=', user.email)));
                 const students = [];
-                querySnapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (data && doc.id) {
+                        students.push({ id: doc.id, ...data });
+                    }
+                });
                 setUsersList(students);
                 filterAllSections(students, chatRequests);
-            } catch (e) { console.log(e); }
+            } catch (e) { console.log("Gabim gjatë marrjes së studentëve:", e); }
             setFetching(false);
         };
         fetchStudents();
@@ -72,34 +73,29 @@ export default function ChannelsScreen() {
         return () => unsubscribe();
     }, [user?.uid, usersList.length]);
 
-    // KORRIGJIMI TOTAL: Gjenerim i pastër pa kllapa dhe pa presje (user.uid < student.id)
     const filterAllSections = async (students, currentRequests) => {
         const chats = [];
         const fresh = [];
         const incoming = [];
 
+        if (!students || !Array.isArray(students)) return;
+        const safeRequests = currentRequests || [];
+
         for (let student of students) {
-            if (!student.id || !user.uid) continue;
+            if (!student || !student.id || !user.uid) continue;
 
-            // Gjenerim i saktë simetrik si në ProfileScreen dhe ChatScreen
             const chatId = user.uid < student.id ? `${user.uid}_${student.id}` : `${student.id}_${user.uid}`;
-
-            const match = currentRequests.find(r => r.id === chatId);
+            const match = safeRequests.find(r => r.id === chatId);
 
             if (match) {
                 if (match.status === 'accepted') {
-                    try {
-                        const msgSnapshot = await getDocs(collection(db, 'channels', chatId, 'messages'));
-                        if (!msgSnapshot.empty) {
-                            chats.push(student);
-                        } else {
-                            fresh.push(student);
-                        }
-                    } catch(err) {
-                        chats.push(student);
+                    chats.push(student);
+                } else if (match.status === 'pending') {
+                    if (match.receiverId === user.uid) {
+                        incoming.push(student);
+                    } else if (match.senderId === user.uid) {
+                        fresh.push(student);
                     }
-                } else if (match.status === 'pending' && match.receiverId === user.uid) {
-                    incoming.push(student);
                 }
             }
         }
@@ -110,9 +106,14 @@ export default function ChannelsScreen() {
     };
 
     const formatNickname = (email) => {
-        if (!email) return 'Student';
-        const parts = email.split('@');
+        if (!email || typeof email !== 'string') return 'Student';
+        const cleanEmail = email.trim();
+        if (!cleanEmail.includes('@')) {
+            return cleanEmail.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+        }
+        const parts = cleanEmail.split('@');
         const partBeforeAt = parts.shift();
+        if (!partBeforeAt) return 'Student';
         return partBeforeAt.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
 
@@ -121,16 +122,23 @@ export default function ChannelsScreen() {
     const handleOpenChatBubble = (channelOrUser, isPrivate = false) => {
         if (!channelOrUser) return;
 
+        const targetId = channelOrUser.id || channelOrUser.uid;
+        if (!targetId) return;
+
         let chatId = channelOrUser.id;
         if (isPrivate) {
-            chatId = user.uid < channelOrUser.id ? `${user.uid}_${channelOrUser.id}` : `${channelOrUser.id}_${user.uid}`;
+            chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
         }
 
         setActiveChatSession({
             id: chatId,
             name: isPrivate ? formatNickname(channelOrUser.email) : channelOrUser.name,
             isPrivate: isPrivate,
-            targetUser: isPrivate ? channelOrUser : null
+            targetUser: isPrivate ? {
+                id: targetId,
+                faculty: channelOrUser.faculty || 'UP',
+                email: channelOrUser.email || ''
+            } : null
         });
         setIsSearchModalOpen(false);
         setIsMaximized(false);
@@ -140,12 +148,13 @@ export default function ChannelsScreen() {
     const handleClearMessagesOnly = async (targetStudent) => {
         if (!targetStudent) return;
         setSelectedStudentMenu(null);
-        const chatId = user.uid < targetStudent.id ? `${user.uid}_${targetStudent.id}` : `${targetStudent.id}_${user.uid}`;
+        const targetId = targetStudent.id || targetStudent.uid;
+        const chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
         try {
             const messagesSnapshot = await getDocs(collection(db, 'channels', chatId, 'messages'));
-            messagesSnapshot.forEach(async (msgDoc) => {
+            for (const msgDoc of messagesSnapshot.docs) {
                 await deleteDoc(doc(db, 'channels', chatId, 'messages', msgDoc.id));
-            });
+            }
             Alert.alert("Pastruar 🗑️", "Historiku i mesazheve u fshi.");
             filterAllSections(usersList, chatRequests);
         } catch (e) { console.log(e); }
@@ -154,13 +163,14 @@ export default function ChannelsScreen() {
     const handleDeleteChatAndName = async (targetStudent) => {
         if (!targetStudent) return;
         setSelectedStudentMenu(null);
-        const chatId = user.uid < targetStudent.id ? `${user.uid}_${targetStudent.id}` : `${targetStudent.id}_${user.uid}`;
+        const targetId = targetStudent.id || targetStudent.uid;
+        const chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
         try {
             await deleteDoc(doc(db, 'chat_requests', chatId));
             const messagesSnapshot = await getDocs(collection(db, 'channels', chatId, 'messages'));
-            messagesSnapshot.forEach(async (msgDoc) => {
+            for (const msgDoc of messagesSnapshot.docs) {
                 await deleteDoc(doc(db, 'channels', chatId, 'messages', msgDoc.id));
-            });
+            }
             Alert.alert("Fshirë plotësisht ❌", "Biseda u largua nga lista.");
             if (activeChatSession?.id === chatId) setActiveChatSession(null);
             filterAllSections(usersList, chatRequests);
@@ -172,101 +182,12 @@ export default function ChannelsScreen() {
         text: isDarkMode ? styles.darkText : styles.lightText,
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
-    return (
-        <View style={{ flex: 1, position: 'relative' }} onMouseMove={(e) => isDragging && !isMaximized && setChatPosition({ x: dragStart.x - e.clientX, y: dragStart.y - e.clientY })} onMouseUp={() => setIsDragging(false)}>
-
-            <View style={styles.mainHeaderRow}>
-                <Text style={[styles.mainSectionTitle, themeStyles.text]}>🏛️ Kanalet e Fakultetit Tënd [{studentFaculty}]</Text>
-            </View>
-
-            <ScrollView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]} contentContainerStyle={{ paddingBottom: 110 }}>
-                {filteredChannels.map((item) => (
-                    <TouchableOpacity key={item.id} style={[styles.channelItem, themeStyles.card]} onPress={() => handleOpenChatBubble(item, false)}>
-                        <View style={styles.hashCircle}><Text style={styles.hashText}>#</Text></View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={[styles.channelName, themeStyles.text]}>{item.name}</Text>
-                            <Text style={styles.channelLabel}>🏛️ Zyrtare</Text>
-                        </View>
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
-
-            <TouchableOpacity style={styles.gmailFabButton} onPress={() => setIsSearchModalOpen(true)} activeOpacity={0.85}>
-                <Text style={styles.gmailFabText}>💬</Text>
-                {hasNewRequestsGlobal && <View style={styles.fabNotificationBadge} />}
-            </TouchableOpacity>
-
-            <Modal visible={isSearchModalOpen} animationType="slide" transparent={true} onRequestClose={() => setIsSearchModalOpen(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, isDarkMode ? styles.darkCard : styles.lightCard]}>
-                        <View style={styles.modalHeader}>
-                            <Text style={[styles.modalTitle, themeStyles.text]}>Inbox Komunikimi - UP</Text>
-                            <TouchableOpacity onPress={() => setIsSearchModalOpen(false)} style={styles.modalCloseBtn}><Text style={styles.modalCloseBtnTxt}>✕</Text></TouchableOpacity>
-                        </View>
-
-                        {/* DIE BEIDEN HAUPTTABS OBEN */}
-                        <View style={styles.modalTabContainer}>
-                            <TouchableOpacity style={[styles.modalTabBtn, activePrivateTab === 'friends' && styles.modalTabActive]} onPress={() => setActivePrivateTab('friends')}>
-                                <Text style={styles.modalTabTxt}>👥 Miqtë e Mi</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.modalTabBtn, activePrivateTab === 'requests' && styles.modalTabActive]} onPress={() => setActivePrivateTab('requests')}>
-                                <Text style={styles.modalTabTxt}>📩 Kërkesat {hasNewRequestsGlobal && <Text style={{ color: '#E53E3E' }}>●</Text>}</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
-                            {fetching ? <ActivityIndicator color="#0B2545" style={{ marginTop: 20 }} /> : (
-                                activePrivateTab === 'friends' ? (
-                                    <>
-                                        {/* UNTER-TABS IN HORIZONTALER FORM */}
-                                        <View style={styles.modalSubTabContainer}>
-                                            <TouchableOpacity style={[styles.modalSubTabBtn, activeSubFriendTab === 'my_chats' && styles.modalSubTabActive]} onPress={() => setActiveSubFriendTab('my_chats')}>
-                                                <Text style={styles.modalSubTabTxt}>💬 My Chats ({myChatsList.length})</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity style={[styles.modalSubTabBtn, activeSubFriendTab === 'start_new' && styles.modalSubTabActive]} onPress={() => setActiveSubFriendTab('start_new')}>
-                                                <Text style={styles.modalSubTabTxt}>➕ Start New ({newChatsList.length})</Text>
-                                            </TouchableOpacity>
-                                        </View>
-
-                                        {/* LIVE CHAT FILTER FEED */}
-                                        {activeSubFriendTab === 'my_chats' ? (
-                                            myChatsList.length === 0 ? <Text style={styles.miniEmptyText}>Nuk ka biseda aktive.</Text> : myChatsList.map(student => renderStudentItem(student, false, themeStyles))
-                                        ) : (
-                                            newChatsList.length === 0 ? <Text style={styles.miniEmptyText}>Nuk ka miq të rinj pa mesazhe.</Text> : newChatsList.map(student => renderStudentItem(student, false, themeStyles))
-                                        )}
-                                    </>
-                                ) : (
-                                    <>
-                                        <Text style={[styles.subSectionHeaderTitle, themeStyles.text]}>📥 Kërkesat e reja të pranuara në pritje</Text>
-                                        {incomingRequests.length === 0 ? <Text style={styles.miniEmptyText}>Nuk ka asnjë kërkesë të re.</Text> : incomingRequests.map(student => renderStudentItem(student, true, themeStyles))}
-                                    </>
-                                )
-                            )}
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
-
-            {activeChatSession && (
-                <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
-                    <View style={styles.bubbleDragHeader} onMouseDown={(e) => { if(!isMaximized) { setIsDragging(true); setDragStart({ x: e.clientX + chatPosition.x, y: e.clientY + chatPosition.y }); } }}>
-                        <Text style={styles.bubbleHeaderTitle} numberOfLines={1}>💬 {activeChatSession.name}</Text>
-                        <View style={styles.headerControls}>
-                            <TouchableOpacity onPress={() => setIsMaximized(!isMaximized)} style={styles.controlBtn}><Text style={styles.controlBtnTxt}>{isMaximized ? '🗗' : '🗖'}</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={() => setActiveChatSession(null)} style={styles.controlBtn}><Text style={styles.controlBtnTxt}>✕</Text></TouchableOpacity>
-                        </View>
-                    </View>
-                    <ChatScreen selectedChannel={activeChatSession} hideHeader={true} onBack={() => setActiveChatSession(null)} />
-                </View>
-            )}
-        </View>
-    );
-
     function renderStudentItem(student, isIncomingRequest, themeStyles) {
+        if (!student) return null;
         const cleanName = formatNickname(student.email);
-        const isMenuOpen = selectedStudentMenu === student.id;
+        const isMenuOpen = selectedStudentMenu === (student.id || student.uid);
         return (
-            <View key={student.id} style={styles.studentSearchItemWrapper}>
+            <View key={student.id || student.uid} style={styles.studentSearchItemWrapper}>
                 <TouchableOpacity style={styles.studentSearchItem} onPress={() => handleOpenChatBubble(student, true)}>
                     <Text style={[styles.studentSearchName, themeStyles.text]}>
                         👤 {cleanName} ({student.faculty || 'UP'}) {isIncomingRequest && <Text style={{ color: '#E53E3E' }}> 🔴</Text>}
@@ -274,13 +195,12 @@ export default function ChannelsScreen() {
                 </TouchableOpacity>
 
                 <View style={{ position: 'relative', justifyContent: 'center' }}>
-                    <TouchableOpacity style={styles.outsideThreeDotsBtn} onPress={() => setSelectedStudentMenu(isMenuOpen ? null : student.id)}>
+                    <TouchableOpacity style={styles.outsideThreeDotsBtn} onPress={() => setSelectedStudentMenu(isMenuOpen ? null : (student.id || student.uid))}>
                         <Text style={[styles.outsideThreeDotsTxt, themeStyles.text]}>⋮</Text>
                     </TouchableOpacity>
 
                     {isMenuOpen && (
                         <View style={styles.outsideDropdown}>
-                            {/* KORRIGJIMI: Tani kalohet ndryshorja e saktë student */}
                             <TouchableOpacity style={styles.dropdownDeleteRow} onPress={() => handleClearMessagesOnly(student)}>
                                 <Text style={{ color: '#3182CE', fontSize: 11, fontWeight: '700' }}>🗑️ Pastro historikun</Text>
                             </TouchableOpacity>
@@ -293,6 +213,121 @@ export default function ChannelsScreen() {
             </View>
         );
     }
+
+    return (
+        <View
+            style={{ flex: 1, position: 'relative' }}
+            onMouseMove={(e) => {
+                if (isDragging && !isMaximized) {
+                    setChatPosition({
+                        x: dragStart.x - e.clientX,
+                        y: dragStart.y - e.clientY
+                    });
+                }
+            }}
+            onMouseUp={() => setIsDragging(false)}
+        >
+            <View style={styles.mainHeaderRow}>
+                <Text style={[styles.mainSectionTitle, themeStyles.text]}>🏛️ Kanalet e Fakultetit Tënd [{studentFaculty}]</Text>
+            </View>
+
+            <ScrollView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]} contentContainerStyle={{ paddingBottom: 110 }}>
+                {filteredChannels.map((channel) => (
+                    <TouchableOpacity key={channel.id} style={[styles.channelItem, themeStyles.card]} onPress={() => handleOpenChatBubble(channel, false)}>
+                        <View style={styles.hashCircle}><Text style={styles.hashText}>#</Text></View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.channelName, themeStyles.text]}>{channel.name}</Text>
+                            <Text style={styles.channelLabel}>Kanal Zyrtar • {channel.department}</Text>
+                        </View>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.gmailFabButton} onPress={() => setIsSearchModalOpen(true)} activeOpacity={0.85}>
+                <Text style={styles.gmailFabText}>💬</Text>
+                {hasNewRequestsGlobal && <View style={styles.fabNotificationBadge} />}
+            </TouchableOpacity>
+            <Modal animationType="fade" transparent={true} visible={isSearchModalOpen} onRequestClose={() => setIsSearchModalOpen(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, themeStyles.card]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, themeStyles.text]}>🔍 Kërko Studentët [UP]</Text>
+                            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setIsSearchModalOpen(false)}>
+                                <Text style={styles.modalCloseBtnTxt}>Mbyll</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.modalTabContainer}>
+                            <TouchableOpacity style={[styles.modalTabBtn, activePrivateTab === 'friends' && styles.modalTabActive]} onPress={() => setActivePrivateTab('friends')}>
+                                <Text style={styles.modalTabTxt}>Miqtë e Mi</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalTabBtn, activePrivateTab === 'search' && styles.modalTabActive]} onPress={() => setActivePrivateTab('search')}>
+                                <Text style={styles.modalTabTxt}>Kërko të Ri</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {activePrivateTab === 'friends' ? (
+                            <View style={{ flex: 1 }}>
+                                <View style={styles.modalSubTabContainer}>
+                                    <TouchableOpacity style={[styles.modalSubTabBtn, activeSubFriendTab === 'my_chats' && styles.modalSubTabActive]} onPress={() => setActiveSubFriendTab('my_chats')}>
+                                        <Text style={styles.modalSubTabTxt}>Bisedat ({(myChatsList || []).length})</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalSubTabBtn, activeSubFriendTab === 'new_requests' && styles.modalSubTabActive]} onPress={() => setActiveSubFriendTab('new_requests')}>
+                                        <Text style={styles.modalSubTabTxt}>Në Pritje ({(newChatsList || []).length})</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalSubTabBtn, activeSubFriendTab === 'incoming' && styles.modalSubTabActive]} onPress={() => setActiveSubFriendTab('incoming')}>
+                                        <Text style={styles.modalSubTabTxt}>Kërkesat {hasNewRequestsGlobal ? '🔴' : `(${(incomingRequests || []).length})`}</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <ScrollView style={{ flex: 1 }}>
+                                    {activeSubFriendTab === 'my_chats' && (
+                                        (!myChatsList || myChatsList.length === 0) ? <Text style={styles.miniEmptyText}>Nuk ka biseda aktive.</Text> : myChatsList.map(s => renderStudentItem(s, false, themeStyles))
+                                    )}
+                                    {activeSubFriendTab === 'new_requests' && (
+                                        (!newChatsList || newChatsList.length === 0) ? <Text style={styles.miniEmptyText}>Nuk ka kërkesa në pritje.</Text> : newChatsList.map(s => renderStudentItem(s, false, themeStyles))
+                                    )}
+                                    {activeSubFriendTab === 'incoming' && (
+                                        (!incomingRequests || incomingRequests.length === 0) ? <Text style={styles.miniEmptyText}>Nuk ka kërkesa të reja.</Text> : incomingRequests.map(s => renderStudentItem(s, true, themeStyles))
+                                    )}
+                                </ScrollView>
+                            </View>
+                        ) : (
+                            <View style={{ flex: 1 }}>
+                                <TextInput style={[styles.searchInput, themeStyles.input]} placeholder="Shkruaj emrin e studentit..." placeholderTextColor="#A0AEC0" value={searchStudent} onChangeText={setSearchStudent} />
+                                <ScrollView style={{ flex: 1, marginTop: 10 }}>
+                                    {(usersList || [])
+                                        .filter(s => s && s.email && typeof s.email === 'string' && formatNickname(s.email).toLowerCase().includes((searchStudent || '').toLowerCase()))
+                                        .map(s => renderStudentItem(s, false, themeStyles))}
+                                </ScrollView>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            </Modal>
+
+            {activeChatSession && (
+                <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
+                    <View
+                        style={styles.bubbleDragHeader}
+                        onMouseDown={(e) => {
+                            if (!isMaximized) {
+                                setIsDragging(true);
+                                setDragStart({ x: e.clientX + chatPosition.x, y: e.clientY + chatPosition.y });
+                            }
+                        }}
+                    >
+                        <Text style={styles.bubbleHeaderTitle} numberOfLines={1}>💬 {activeChatSession.name}</Text>
+                        <View style={styles.headerControls}>
+                            <TouchableOpacity onPress={() => setIsMaximized(!isMaximized)} style={styles.controlBtn}><Text style={styles.controlBtnTxt}>{isMaximized ? '🗗' : '🗖'}</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setActiveChatSession(null)} style={styles.controlBtn}><Text style={styles.controlBtnTxt}>✕</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                    <ChatScreen selectedChannel={activeChatSession} hideHeader={true} onBack={() => setActiveChatSession(null)} />
+                </View>
+            )}
+        </View>
+    );
 }
 const styles = StyleSheet.create({
     container: { flex: 1, paddingHorizontal: 12 },
@@ -318,13 +353,11 @@ const styles = StyleSheet.create({
     modalCloseBtn: { padding: 4, backgroundColor: '#FFF5F5', borderRadius: 6 },
     modalCloseBtnTxt: { color: '#C53030', fontWeight: '700', fontSize: 11 },
 
-    // HAUPTTABS OBEN
     modalTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 3, borderRadius: 8, marginVertical: 6 },
     modalTabBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6 },
     modalTabActive: { backgroundColor: '#FFF', elevation: 1 },
     modalTabTxt: { fontSize: 11, fontWeight: '700', color: '#4A5568' },
 
-    // UNTER-TABS HORIZONTAL (IDENTISCHER STIL, ETWAS KLEINER)
     modalSubTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 2.5, borderRadius: 6, marginVertical: 6, width: '100%' },
     modalSubTabBtn: { flex: 1, paddingVertical: 5, alignItems: 'center', borderRadius: 5 },
     modalSubTabActive: { backgroundColor: '#FFF', elevation: 1 },

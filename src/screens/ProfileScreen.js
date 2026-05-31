@@ -55,7 +55,7 @@ export default function ProfileScreen({ user, onLogout }) {
         } catch (e) {
             console.log("Gabim load data:", e);
         } finally {
-            setLoading(false);
+            loading && setLoading(false);
         }
     };
 
@@ -154,7 +154,7 @@ export default function ProfileScreen({ user, onLogout }) {
         } catch (e) { console.log(e); }
     };
 
-    // RREGULLIMI I MADH: ID-ja tani gjenerohet si string i pastër pa presje (ID1_ID2)
+    // REQUEST-SYSTEM SYNC: Erstellt die private Unterhaltung sauber als 'pending' (Në Pritje)
     const handleOpenDiscoverChat = async (postAuthorUid, authorName, authorFaculty) => {
         if (!postAuthorUid || !user?.uid) return;
 
@@ -164,7 +164,7 @@ export default function ProfileScreen({ user, onLogout }) {
 
         try {
             await setDoc(doc(db, 'chat_requests', chatId), {
-                status: 'accepted',
+                status: 'pending',
                 senderId: user.uid,
                 receiverId: postAuthorUid,
                 createdAt: new Date().toISOString()
@@ -203,7 +203,7 @@ export default function ProfileScreen({ user, onLogout }) {
                             <Image source={{ uri: profileImage }} style={styles.avatarImage} />
                         ) : (
                             <View style={styles.avatarCircle}>
-                                <Text style={styles.avatarText}>{studentNickname.charAt(0).toUpperCase()}</Text>
+                                <Text style={styles.avatarText}>{String(studentNickname).charAt(0).toUpperCase()}</Text>
                             </View>
                         )}
                         <View style={styles.cameraBadge}><Text style={styles.cameraIcon}>📸</Text></View>
@@ -223,18 +223,23 @@ export default function ProfileScreen({ user, onLogout }) {
                     </TouchableOpacity>
                 </View>
 
-                {/* TAB CONTENT */}
                 {activeSubTab === 'posts' ? (
                     <View style={{ width: '100%' }}>
                         <View style={[styles.newPostBox, themeStyles.card]}>
-                            <TextInput style={[styles.postInput, themeStyles.input]} placeholder="Çfarë po mendon tani..." value={postText} onChangeText={setPostText} multiline />
+                            <TextInput
+                                style={[styles.postInput, themeStyles.input]}
+                                placeholder="Çfarë po mendon sot?"
+                                placeholderTextColor="#A0AEC0"
+                                value={postText}
+                                onChangeText={setPostText}
+                            />
                             {postImage && <Image source={{ uri: postImage }} style={styles.previewPostImage} />}
                             <View style={styles.postActionsRow}>
-                                <TouchableOpacity style={styles.addPhotoBtn} onPress={pickPostImage} activeOpacity={0.7}>
-                                    <Text style={styles.addPhotoBtnText}>📸 Foto</Text>
+                                <TouchableOpacity style={styles.addPhotoBtn} onPress={pickPostImage}>
+                                    <Text style={styles.addPhotoBtnText}>📸 Shto Foto</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={styles.submitPostBtn} onPress={handleCreatePost} disabled={uploading}>
-                                    <Text style={styles.submitPostBtnText}>Posto ➔</Text>
+                                    {uploading ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.submitPostBtnText}>Posto ➔</Text>}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -258,7 +263,7 @@ export default function ProfileScreen({ user, onLogout }) {
                             return (
                                 <View key={item.id} style={[styles.discoverFeedCard, themeStyles.card]}>
                                     <View style={styles.cardHeader}>
-                                        <View style={styles.avatarMini}><Text style={styles.avatarMiniTxt}>{item.author?.charAt(0).toUpperCase()}</Text></View>
+                                        <View style={styles.avatarMini}><Text style={styles.avatarMiniTxt}>{String(item.author).charAt(0).toUpperCase()}</Text></View>
                                         <View style={{ flex: 1, marginLeft: 10 }}>
                                             <Text style={[styles.authorNameTxt, themeStyles.text]}>{authorName}</Text>
                                             <Text style={styles.facultySubTxt}>🏛️ {item.faculty || 'UP'}</Text>
@@ -310,7 +315,6 @@ export default function ProfileScreen({ user, onLogout }) {
                 )}
             </ScrollView>
 
-            {/* FLOATING DRITARJA SMART */}
             {activeChatSession && (
                 <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
                     <View style={styles.bubbleDragHeader} onMouseDown={(e) => { if (!isMaximized) { setIsDragging(true); setDragStart({ x: e.clientX + chatPosition.x, y: e.clientY + chatPosition.y }); } }}>
