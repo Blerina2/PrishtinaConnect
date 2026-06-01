@@ -11,7 +11,7 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const [newMessage, setNewMessage] = useState('');
     const [requestStatus, setRequestStatus] = useState(selectedChannel?.initialStatus || 'accepted');
     const [loading, setLoading] = useState(true);
-    const [showViberMenu, setShowViberMenu] = useState(false);
+    const [showTrashMenu, setShowTrashMenu] = useState(false);
 
     useEffect(() => {
         if (!selectedChannel?.id || !user?.uid) return;
@@ -20,19 +20,19 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             setRequestStatus('accepted');
             setLoading(false);
         } else {
-            const requestDocRef = doc(db, 'chat_requests', selectedChannel.id);
+            const requestDocRef = doc(db, 'channels', selectedChannel.id);
             const unsubscribeRequest = onSnapshot(requestDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data.status === 'accepted') {
                         setRequestStatus('accepted');
                     } else if (data.senderId === user.uid) {
-                        setRequestStatus('pending'); // Ti e ke dërguar kërkesën -> Do të dalë te "Në Pritje"
+                        setRequestStatus('pending');
                     } else {
-                        setRequestStatus('incoming'); // Të ka ardhur ty -> Do të dalë te "Kërkesat"
+                        setRequestStatus('incoming');
                     }
                 } else {
-                    setRequestStatus('none'); // Bisedë krejtësisht e re pa kërkesë ende
+                    setRequestStatus('none');
                 }
                 setLoading(false);
             }, (error) => {
@@ -70,7 +70,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         }
         return cleanStr.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
-
     const handleSendMessage = async () => {
         if (!newMessage.trim() || !user?.uid || !selectedChannel?.id) return;
 
@@ -79,21 +78,25 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
 
         if (selectedChannel.isPrivate && requestStatus === 'none') {
             try {
-                // RREGULLIMI I SAKTË: Nxerrja e ID-së së saktë të partnerit nga ID e bisedës unike
                 const idParts = selectedChannel.id.split('_');
-                const extractedReceiverId = idParts.find(id => id !== user.uid) || selectedChannel.targetUser?.id || '';
+                const extractedPartnerId = idParts.find(id => id !== user.uid && id !== 'chat') || selectedChannel.targetUser?.id || '';
 
-                const reqDocRef = doc(db, 'chat_requests', selectedChannel.id);
-                await setDoc(reqDocRef, {
+                if (!extractedPartnerId) return;
+
+                const channelDocRef = doc(db, 'channels', selectedChannel.id);
+                await setDoc(channelDocRef, {
                     id: selectedChannel.id,
+                    isPrivate: true,
                     status: 'pending',
                     senderId: user.uid,
-                    receiverId: extractedReceiverId,
+                    receiverId: extractedPartnerId,
+                    members: [user.uid, extractedPartnerId],
                     createdAt: new Date().toISOString()
                 }, { merge: true });
+
                 setRequestStatus('pending');
             } catch (e) {
-                console.log("Gabim kritik gjatë krijimit të dokumentit të kërkesës:", e);
+                console.log("Gabim gjatë krijimit të kanalit privat:", e);
             }
         }
 
@@ -105,14 +108,14 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 email: user.email || 'student@uni-pr.edu'
             });
         } catch (e) {
-            console.log("Gabim gjatë shtimit të mesazhit në Firestore:", e);
+            console.log("Gabim gjatë shtimit të mesazhit:", e);
         }
     };
 
     const handleAccept = async () => {
         if (!selectedChannel?.id) return;
         try {
-            await setDoc(doc(db, 'chat_requests', selectedChannel.id), { status: 'accepted' }, { merge: true });
+            await setDoc(doc(db, 'channels', selectedChannel.id), { status: 'accepted' }, { merge: true });
             setRequestStatus('accepted');
         } catch (e) { console.log(e); }
     };
@@ -120,19 +123,49 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const handleDeny = async () => {
         if (!selectedChannel?.id) return;
         try {
-            await deleteDoc(doc(db, 'chat_requests', selectedChannel.id));
+            await deleteDoc(doc(db, 'channels', selectedChannel.id));
             onBack();
         } catch (e) { console.log(e); }
     };
 
-    const handleDeleteChatComplete = async () => {
+    const handleClearMessagesOnly = async () => {
         if (!selectedChannel?.id) return;
-        setShowViberMenu(false);
-
+        setShowTrashMenu(false);
         try {
             const batch = writeBatch(db);
-            const reqDocRef = doc(db, 'chat_requests', selectedChannel.id);
-            batch.delete(reqDocRef);
+            const messagesSnapshot = await getDocs(collection(db, 'channels', selectedChannel.id, 'messages'));
+            messagesSnapshot.forEach((msgDoc) => {
+                const msgDocRef = doc(db, 'channels', selectedChannel.id, 'messages', msgDoc.id);
+                batch.delete(msgDocRef);
+            });
+            await batch.commit();
+            Alert.alert("Historiku u pastrua 🗑️", "Të gjitha mesazhet u fshinë, por biseda mbetet aktive.");
+        } catch (e) { console.log("Gabim gjatë pastrimit të mesazheve:", e); }
+    };
+
+    const handleDeleteChatOnly = async () => {
+        if (!selectedChannel?.id) return;
+        setShowTrashMenu(false);
+        try {
+            const batch = writeBatch(db);
+            const messagesSnapshot = await getDocs(collection(db, 'channels', selectedChannel.id, 'messages'));
+            messagesSnapshot.forEach((msgDoc) => {
+                const msgDocRef = doc(db, 'channels', selectedChannel.id, 'messages', msgDoc.id);
+                batch.delete(msgDocRef);
+            });
+            await batch.commit();
+            Alert.alert("Biseda u fshi 🗑️", "Historiku u pastrua.");
+            if (onBack) onBack();
+        } catch (e) { console.log("Gabim gjatë fshirjes së bisedës:", e); }
+    };
+
+    const handleRemoveFromFriends = async () => {
+        if (!selectedChannel?.id) return;
+        setShowTrashMenu(false);
+        try {
+            const batch = writeBatch(db);
+            const channelDocRef = doc(db, 'channels', selectedChannel.id);
+            batch.delete(channelDocRef);
 
             const messagesSnapshot = await getDocs(collection(db, 'channels', selectedChannel.id, 'messages'));
             messagesSnapshot.forEach((msgDoc) => {
@@ -141,11 +174,9 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             });
 
             await batch.commit();
-            Alert.alert("Biseda u fshi 🗑️", "Historiku i kësaj bisede u pastrua plotësisht.");
+            Alert.alert("U largua nga miqtë 🚫", "Lidhja e shoqërisë dhe historiku u fshinë komplet.");
             if (onBack) onBack();
-        } catch (e) {
-            console.log("Gabim kritik gjatë fshirjes me batch:", e);
-        }
+        } catch (e) { console.log("Gabim gjatë largimit nga miqtë:", e); }
     };
 
     if (!selectedChannel || !selectedChannel.id || loading) {
@@ -160,19 +191,38 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                     <Text style={styles.headerTitle}>{selectedChannel.name}</Text>
 
                     {selectedChannel.isPrivate && (
-                        <View style={{ position: 'relative' }}>
-                            <TouchableOpacity onPress={() => setShowViberMenu(!showViberMenu)} style={styles.threeDotsBtn}>
-                                <Text style={styles.threeDotsTxt}>⋮</Text>
+                        <View>
+                            {/* Butoni i koshit 🗑️ */}
+                            <TouchableOpacity onPress={() => setShowTrashMenu(!showTrashMenu)} style={styles.trashcanBtn} activeOpacity={0.7}>
+                                <Text style={styles.trashcanIconTxt}>🗑️</Text>
                             </TouchableOpacity>
-                            {showViberMenu && (
-                                <View style={styles.viberDropdown}>
-                                    <TouchableOpacity style={styles.dropdownItem} onPress={handleDeleteChatComplete}>
-                                        <Text style={styles.dropdownDeleteTxt}>🗑️ Fshij Bisedën</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
                         </View>
                     )}
+                </View>
+            )}
+
+            {/* TAB-I I RI SAKTI: Shfaqet direkt MBI bisedën e hapur, pa u bllokuar nga dritarja e kërkimit */}
+            {selectedChannel.isPrivate && showTrashMenu && (
+                <View style={styles.chatInternalOverlay}>
+                    <View style={styles.viberMasterTabContent}>
+                        <Text style={styles.viberTabTitleTxt}>⚙️ Opsionet e Bisedës</Text>
+
+                        <TouchableOpacity style={styles.viberTabRowBtn} onPress={handleClearMessagesOnly}>
+                            <Text style={styles.dropdownBlueTxt}>🗑️ Pastro Historikun</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.viberTabRowBtn} onPress={handleDeleteChatOnly}>
+                            <Text style={styles.dropdownOrangeTxt}>❌ Fshij Bisedën</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.viberTabRowBtn, { borderBottomWidth: 0 }]} onPress={handleRemoveFromFriends}>
+                            <Text style={styles.dropdownRedTxt}>🚫 Largo nga Miqtë</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.viberTabCloseBtn} onPress={() => setShowTrashMenu(false)}>
+                            <Text style={styles.viberTabCloseTxt}>Mbyll Opsionet ×</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
 
@@ -201,7 +251,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 </View>
             )}
 
-            {/* BLLOKIMI I SHKRIMIT: Aktivizohet te dërguesi automatikisht sapo shkruan mesazhin e parë */}
             {selectedChannel.isPrivate && requestStatus === 'pending' && (
                 <View style={styles.alertBox}>
                     <Text style={[styles.alertTxt, { color: '#718096', fontStyle: 'italic', textAlign: 'center' }]}>
@@ -210,7 +259,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 </View>
             )}
 
-            {/* INPUTI I SHKRIMIT: Lejohet vetëm nëse biseda është e re fare (none) ose nëse është pranuar (accepted) */}
             {(requestStatus === 'accepted' || requestStatus === 'none') && (
                 <View style={styles.inputRow}>
                     <TextInput
@@ -232,20 +280,31 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#FFF' },
+    container: { flex: 1, backgroundColor: '#FFF', position: 'relative' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     lightBg: { backgroundColor: '#FFF' }, darkBg: { backgroundColor: '#1A202C' },
     header: { height: 50, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, zIndex: 100 },
     headerText: { color: '#FFF', fontWeight: '700' }, headerTitle: { color: '#FFF', fontWeight: '700' },
-    threeDotsBtn: { paddingHorizontal: 8, paddingVertical: 4 }, threeDotsTxt: { color: '#FFF', fontSize: 18, fontWeight: '900' },
-    viberDropdown: { position: 'absolute', top: 34, right: 0, backgroundColor: '#FFF', width: 150, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 5, zIndex: 99999 },
-    dropdownItem: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, width: '100%', alignItems: 'center' },
-    dropdownDeleteRow: { padding: 6, width: '100%' },
-    dropdownDeleteTxt: { color: '#E53E3E', fontSize: 12, fontWeight: '800', letterSpacing: -0.2 },
-    inputRow: { flexDirection: 'row', padding: 8, alignItems: 'center', backgroundColor: '#F0F4F8', borderTopWidth: 1, borderColor: '#E2E8F0' },
+
+    trashcanBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
+    trashcanIconTxt: { fontSize: 15 },
+
+    /* REZOLUCIONI VIZUAL: Qëndron fiks brenda dritares së bisedës pa u bllokuar nga modali i kërkimit */
+    chatInternalOverlay: { position: 'absolute', top: 50, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255, 255, 255, 0.97)', justifyContent: 'center', alignItems: 'center', zIndex: 999999, padding: 10 },
+    viberMasterTabContent: { width: '100%', maxWidth: 260, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 20 },
+    viberTabTitleTxt: { fontSize: 13, fontWeight: '800', color: '#0B2545', marginBottom: 8, textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#EDF2F7', paddingBottom: 6 },
+    viberTabRowBtn: { width: '100%', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center', cursor: 'pointer' },
+    viberTabCloseBtn: { marginTop: 10, width: '100%', height: 32, backgroundColor: '#EDF2F7', borderRadius: 8, justifyContent: 'center', alignItems: 'center', cursor: 'pointer' },
+    viberTabCloseTxt: { color: '#4A5568', fontWeight: '700', fontSize: 11 },
+
+    dropdownBlueTxt: { color: '#3182CE', fontSize: 12, fontWeight: '800' },
+    dropdownOrangeTxt: { color: '#DD6B20', fontSize: 12, fontWeight: '800' },
+    dropdownRedTxt: { color: '#E53E3E', fontSize: 12, fontWeight: '800' },
+
+    inputRow: { flexDirection: 'row', padding: 8, alignItems: 'center', backgroundColor: '#F0F4F8', borderTopWidth: 1, borderColor: '#E2E8F0', zIndex: 10 },
     input: { flex: 1, height: 34, backgroundColor: '#FFF', borderRadius: 17, paddingHorizontal: 12, fontSize: 13, borderWidth: 1, borderColor: '#CCD0D5', color: '#000' },
     sendBtn: { width: 34, height: 34, backgroundColor: '#0B2545', borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginLeft: 6 },
-    alertBox: { padding: 12, backgroundColor: '#F8FAFC', borderTopWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', width: '100%' },
+    alertBox: { padding: 12, backgroundColor: '#F8FAFC', borderTopWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', width: '100%', zIndex: 20 },
     alertTxt: { fontWeight: '700', fontSize: 12, marginBottom: 8, color: '#2D3748' },
     row: { flexDirection: 'row', gap: 8, width: '100%' },
     denyBtn: { flex: 1, height: 34, backgroundColor: '#FCE8E6', borderRadius: 6, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#FAD2CF' },

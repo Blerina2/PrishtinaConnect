@@ -26,7 +26,6 @@ export default function ChannelsScreen() {
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-    // VIBER-STYLE: Speichert das ausgewählte Student-Objekt für das Aktions-Popup
     const [selectedStudentForAction, setSelectedStudentForAction] = useState(null);
 
     const studentFaculty = user?.faculty || 'FIEK';
@@ -48,8 +47,11 @@ export default function ChannelsScreen() {
     useEffect(() => {
         if (!user?.uid) return;
 
-        // Echtzeit-Verbindung zu den Chat-Anfragen
-        const qRequests = query(collection(db, 'chat_requests'));
+        const qRequests = query(
+            collection(db, 'channels'),
+            where('members', 'array-contains', user.uid)
+        );
+
         const unsubscribeRequests = onSnapshot(qRequests, (snapshot) => {
             const reqs = [];
             snapshot.forEach((doc) => {
@@ -64,18 +66,21 @@ export default function ChannelsScreen() {
 
         const fetchStudents = async () => {
             try {
-                const querySnapshot = await getDocs(query(collection(db, 'users'), where('email', '!=', user.email)));
+                const querySnapshot = await getDocs(collection(db, 'users'));
                 const students = [];
+
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    if (data) {
-                        students.push({ id: doc.id, ...data, uid: doc.id });
+                    if (data && data.email !== user.email) {
+                        const actualId = data.uid || doc.id;
+                        students.push({ id: actualId, ...data, uid: actualId });
                     }
                 });
+
                 setUsersList(students);
                 filterAllSections(students, chatRequests);
             } catch (e) {
-                console.log("Gabim gjatë marrjes së studentëve:", e);
+                console.log("Gabim gjatë ngarkimit të studentëve:", e);
             } finally {
                 setFetching(false);
             }
@@ -87,8 +92,7 @@ export default function ChannelsScreen() {
             unsubscribeRequests();
         };
     }, [user?.uid, usersList.length]);
-
-    // FILTRIMI I SAKTË: Ndarja live e tabeve pa pasur nevojë për refresh
+    // REITER-LOGIK: Sortiert private Anfragen und Chats live basierend auf dem members-Array
     const filterAllSections = (students, currentRequests) => {
         const chats = [];
         const fresh = [];
@@ -98,19 +102,24 @@ export default function ChannelsScreen() {
         const safeRequests = currentRequests || [];
 
         for (let student of students) {
-            if (!student || !student.id || !user.uid) continue;
+            const studentUid = student.uid || student.id;
+            if (!studentUid || !user.uid) continue;
 
-            const chatId = user.uid < student.id ? `${user.uid}_${student.id}` : `${student.id}_${user.uid}`;
-            const match = safeRequests.find(r => r.id === chatId);
+            const match = safeRequests.find(r =>
+                r.members && r.members.includes(user.uid) && r.members.includes(studentUid)
+            );
 
             if (match) {
-                if (match.status === 'accepted') {
-                    chats.push(student); // Kalon te "Bisedat" (Miqtë zyrtarë)
-                } else if (match.status === 'pending') {
+                const studentWithReq = { ...student, id: studentUid, currentRequestId: match.id };
+                const currentStatus = match.status || 'pending';
+
+                if (currentStatus === 'accepted') {
+                    chats.push(studentWithReq);
+                } else if (currentStatus === 'pending') {
                     if (match.senderId === user.uid) {
-                        fresh.push(student); // Kalon te "Në Pritje"
+                        fresh.push(studentWithReq);
                     } else if (match.receiverId === user.uid) {
-                        incoming.push(student); // Kalon te "Kërkesat"
+                        incoming.push(studentWithReq);
                     }
                 }
             }
@@ -120,6 +129,7 @@ export default function ChannelsScreen() {
         setNewChatsList(fresh);
         setIncomingRequests(incoming);
     };
+
     const formatNickname = (email) => {
         if (!email || typeof email !== 'string') return 'Student';
         const cleanEmail = email.trim();
@@ -134,7 +144,7 @@ export default function ChannelsScreen() {
 
     const hasNewRequestsGlobal = incomingRequests.length > 0;
 
-    const handleOpenChatBubble = async (channelOrUser, isPrivate = false) => {
+    const handleOpenChatBubble = (channelOrUser, isPrivate = false) => {
         if (!channelOrUser) return;
 
         const targetId = channelOrUser.id || channelOrUser.uid;
@@ -144,24 +154,25 @@ export default function ChannelsScreen() {
         let initialStatus = 'accepted';
 
         if (isPrivate) {
-            chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
+            if (channelOrUser.currentRequestId) {
+                chatId = channelOrUser.currentRequestId;
+            } else {
+                const existing = chatRequests.find(r =>
+                    r.members && r.members.includes(user.uid) && r.members.includes(targetId)
+                );
+                chatId = existing ? existing.id : `chat_${user.uid}_${targetId}`;
+            }
 
-            try {
-                const reqDocSnap = await getDoc(doc(db, 'chat_requests', chatId));
-                if (reqDocSnap.exists()) {
-                    const reqData = reqDocSnap.data();
-                    if (reqData.status === 'accepted') {
-                        initialStatus = 'accepted';
-                    } else if (reqData.senderId === user.uid) {
-                        initialStatus = 'pending';
-                    } else {
-                        initialStatus = 'incoming';
-                    }
+            const match = chatRequests.find(r => r.id === chatId);
+            if (match) {
+                if (match.status === 'accepted') {
+                    initialStatus = 'accepted';
+                } else if (match.senderId === user.uid) {
+                    initialStatus = 'pending';
                 } else {
-                    initialStatus = 'none';
+                    initialStatus = 'incoming';
                 }
-            } catch (e) {
-                console.log("Gabim kontrolli:", e);
+            } else {
                 initialStatus = 'none';
             }
         }
@@ -182,18 +193,16 @@ export default function ChannelsScreen() {
         setChatPosition({ x: 20, y: 105 });
     };
 
-    // PASTRIMI I HISTORIKUT ME BATCH (VIBER-STYLE)
+    // BANI PASTRIMIN E HISTORIKUT ME BATCH
     const handleClearMessagesOnly = async (targetStudent) => {
-        if (!targetStudent) return;
+        if (!targetStudent || !targetStudent.currentRequestId) return;
         setSelectedStudentForAction(null);
-        const targetId = targetStudent.id || targetStudent.uid;
-        const chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
         try {
             const batch = writeBatch(db);
-            const messagesSnapshot = await getDocs(collection(db, 'channels', chatId, 'messages'));
+            const messagesSnapshot = await getDocs(collection(db, 'channels', targetStudent.currentRequestId, 'messages'));
 
             messagesSnapshot.forEach((msgDoc) => {
-                const msgDocRef = doc(db, 'channels', chatId, 'messages', msgDoc.id);
+                const msgDocRef = doc(db, 'channels', targetStudent.currentRequestId, 'messages', msgDoc.id);
                 batch.delete(msgDocRef);
             });
 
@@ -203,27 +212,25 @@ export default function ChannelsScreen() {
         } catch (e) { console.log("Gabim gjatë fshirjes së historikut:", e); }
     };
 
-    // FSHIRJA E PLOTË E BISEDËS ME BATCH (VIBER-STYLE)
+    // BANI FSHIRJEN E PLOTË TË BISEDËS ME BATCH
     const handleDeleteChatAndName = async (targetStudent) => {
-        if (!targetStudent) return;
+        if (!targetStudent || !targetStudent.currentRequestId) return;
         setSelectedStudentForAction(null);
-        const targetId = targetStudent.id || targetStudent.uid;
-        const chatId = user.uid < targetId ? `${user.uid}_${targetId}` : `${targetId}_${user.uid}`;
         try {
             const batch = writeBatch(db);
 
-            const reqDocRef = doc(db, 'chat_requests', chatId);
+            const reqDocRef = doc(db, 'channels', targetStudent.currentRequestId);
             batch.delete(reqDocRef);
 
-            const messagesSnapshot = await getDocs(collection(db, 'channels', chatId, 'messages'));
+            const messagesSnapshot = await getDocs(collection(db, 'channels', targetStudent.currentRequestId, 'messages'));
             messagesSnapshot.forEach((msgDoc) => {
-                const msgDocRef = doc(db, 'channels', chatId, 'messages', msgDoc.id);
+                const msgDocRef = doc(db, 'channels', targetStudent.currentRequestId, 'messages', msgDoc.id);
                 batch.delete(msgDocRef);
             });
 
             await batch.commit();
             Alert.alert("Fshirë plotësisht ❌", "Biseda u largua nga lista.");
-            if (activeChatSession?.id === chatId) setActiveChatSession(null);
+            if (activeChatSession?.id === targetStudent.currentRequestId) setActiveChatSession(null);
             filterAllSections(usersList, chatRequests);
         } catch (e) { console.log("Gabim gjatë fshirjes së plotë:", e); }
     };
@@ -233,14 +240,17 @@ export default function ChannelsScreen() {
         text: isDarkMode ? styles.darkText : styles.lightText,
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
-    // KORRIGJIMI STRUKTUROR: Klikim i izoluar për tri pikat përmes stopPropagation
+    // KORRIGJIMI TOTAL VIZUAL: Modali i vjetër i madh u fshi, mbetet vetëm flluska e vogël Instagram-Style
     function renderStudentItem(student, isIncomingRequest, themeStyles) {
         if (!student) return null;
+        const studentUid = student.uid || student.id;
         const cleanName = formatNickname(student.email);
 
+        const isBubbleOpen = selectedStudentForAction && selectedStudentForAction.id === studentUid;
+
         return (
-            <View key={student.id || student.uid} style={styles.studentSearchItemWrapper}>
-                {/* Hap vetëm dritaren e bisedës */}
+            <View key={studentUid} style={styles.studentSearchItemWrapper}>
+                {/* Kartela e studentit */}
                 <TouchableOpacity
                     style={styles.studentSearchItem}
                     onPress={() => handleOpenChatBubble(student, true)}
@@ -250,16 +260,55 @@ export default function ChannelsScreen() {
                     </Text>
                 </TouchableOpacity>
 
-                {/* Butoni i pavarur për tri pikat - Viber-Style */}
-                <TouchableOpacity
-                    style={styles.outsideThreeDotsBtn}
-                    onPress={(e) => {
-                        if (e && e.stopPropagation) e.stopPropagation(); // Ndalon hapjen e bisedës në Web
-                        setSelectedStudentForAction(student); // Hap modalin global të opsioneve
-                    }}
-                >
-                    <Text style={[styles.outsideThreeDotsTxt, themeStyles.text]}>⋮</Text>
-                </TouchableOpacity>
+                {/* Zona e tri pikave anësore */}
+                <View style={{ position: 'relative', zIndex: 999999 }}>
+                    <TouchableOpacity
+                        style={styles.outsideThreeDotsBtn}
+                        onPress={(e) => {
+                            if (e && e.stopPropagation) e.stopPropagation();
+                            setSelectedStudentForAction(isBubbleOpen ? null : student);
+                        }}
+                    >
+                        <Text style={[styles.outsideThreeDotsTxt, themeStyles.text]}>⋮</Text>
+                    </TouchableOpacity>
+                    {/* FLLUSKA E RE INSTAGRAM-STYLE ME OPSIONIN UNFRIEND */}
+                    {isBubbleOpen && (
+                        <View style={styles.outsideInstagramBubble}>
+                            <TouchableOpacity
+                                style={styles.instagramRowBtn}
+                                onPress={(e) => {
+                                    if (e && e.stopPropagation) e.stopPropagation();
+                                    handleClearMessagesOnly(selectedStudentForAction);
+                                }}
+                            >
+                                <Text style={styles.dropdownBlueTxt}>🗑️ Pastro Historikun</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.instagramRowBtn}
+                                onPress={(e) => {
+                                    if (e && e.stopPropagation) e.stopPropagation();
+                                    handleDeleteChatAndName(selectedStudentForAction);
+                                }}
+                            >
+                                <Text style={styles.dropdownOrangeTxt}>❌ Fshij Bisedën</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.instagramRowBtn, { borderBottomWidth: 0 }]}
+                                onPress={(e) => {
+                                    if (e && e.stopPropagation) e.stopPropagation();
+                                    // Thërret të njëjtin funksion fshirjeje totale pasi fshin lidhjen bazë dhe mesazhet
+                                    handleDeleteChatAndName(selectedStudentForAction);
+                                    Alert.alert("U largua nga miqtë 🚫", "Lidhja e shoqërisë u fshi komplet.");
+                                }}
+                            >
+                                <Text style={styles.dropdownRedTxt}>🚫 Unfriend (Largo)</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                </View>
             </View>
         );
     }
@@ -297,38 +346,6 @@ export default function ChannelsScreen() {
                 <Text style={styles.gmailFabText}>💬</Text>
                 {hasNewRequestsGlobal && <View style={styles.fabNotificationBadge} />}
             </TouchableOpacity>
-            {/* VIBER-STYLE ACTIONS MODAL: Shfaqet si dritare e pavarur zëvendësuese në mes të ekranit */}
-            <Modal animationType="fade" transparent={true} visible={selectedStudentForAction !== null} onRequestClose={() => setSelectedStudentForAction(null)}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.viberModalContent, themeStyles.card]}>
-                        <Text style={[styles.viberModalTitle, themeStyles.text]}>
-                            ⚙️ Opsionet për: {selectedStudentForAction ? formatNickname(selectedStudentForAction.email) : ''}
-                        </Text>
-
-                        <TouchableOpacity
-                            style={styles.viberModalRowBtn}
-                            onPress={() => handleClearMessagesOnly(selectedStudentForAction)}
-                        >
-                            <Text style={{ color: '#3182CE', fontSize: 13, fontWeight: '700' }}>🗑️ Pastro Historikun e Mesazheve</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.viberModalRowBtn, { borderBottomWidth: 0 }]}
-                            onPress={() => handleDeleteChatAndName(selectedStudentForAction)}
-                        >
-                            <Text style={{ color: '#C53030', fontSize: 13, fontWeight: '700' }}>❌ Fshij krejt Bisedën dhe Lidhjen</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.viberCancelBtn}
-                            onPress={() => setSelectedStudentForAction(null)}
-                        >
-                            <Text style={{ color: '#718096', fontWeight: '700' }}>Anulo</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
-
             <Modal animationType="fade" transparent={true} visible={isSearchModalOpen} onRequestClose={() => setIsSearchModalOpen(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, themeStyles.card]}>
@@ -411,6 +428,7 @@ export default function ChannelsScreen() {
         </View>
     );
 }
+
 const styles = StyleSheet.create({
     container: { flex: 1, paddingHorizontal: 12 },
     lightBg: { backgroundColor: '#F8FAFC' }, darkBg: { backgroundColor: '#1A202C' },
@@ -429,7 +447,7 @@ const styles = StyleSheet.create({
     fabNotificationBadge: { position: 'absolute', top: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: '#E53E3E', borderWidth: 1.5, borderColor: '#FFF' },
 
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 15, zIndex: 999999 },
-    modalContent: { width: '100%', maxWidth: 400, height: '60%', borderRadius: 16, padding: 16, borderWidth: 1 },
+    modalContent: { width: '100%', maxWidth: 400, height: '60%', borderRadius: 16, padding: 16, borderWidth: 1, position: 'relative' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     modalTitle: { fontSize: 13, fontWeight: '800' },
     modalCloseBtn: { padding: 4, backgroundColor: '#FFF5F5', borderRadius: 6 },
@@ -439,6 +457,7 @@ const styles = StyleSheet.create({
     modalTabActive: { backgroundColor: '#FFF', elevation: 1 },
     modalTabTxt: { fontSize: 11, fontWeight: '700', color: '#4A5568' },
     modalSubTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 2.5, borderRadius: 6, marginVertical: 6, width: '100%' },
+    where: { flex: 1 },
     modalSubTabBtn: { flex: 1, paddingVertical: 5, alignItems: 'center', borderRadius: 5 },
     modalSubTabActive: { backgroundColor: '#FFF', elevation: 1 },
     modalSubTabTxt: { fontSize: 10, fontWeight: '700', color: '#4A5568' },
@@ -446,19 +465,23 @@ const styles = StyleSheet.create({
     miniEmptyText: { fontSize: 11, color: '#A0AEC0', paddingHorizontal: 10, fontStyle: 'italic', marginVertical: 8, textAlign: 'center' },
     searchInput: { height: 36, borderWidth: 1.2, borderRadius: 8, paddingHorizontal: 10, fontSize: 12 },
 
-    studentSearchItemWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.01)', borderRadius: 8, borderWidth: 1, borderColor: '#F1F5F9' },
+    studentSearchItemWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.01)', borderRadius: 8, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative' },
     studentSearchItem: { flex: 1, padding: 12 },
     studentSearchName: { fontSize: 12, fontWeight: '700' },
     outsideThreeDotsBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', cursor: 'pointer' },
     outsideThreeDotsTxt: { fontSize: 16, fontWeight: '900' },
 
-    viberModalContent: { width: '90%', maxWidth: 340, padding: 20, borderRadius: 16, borderWidth: 1, alignItems: 'center', backgroundColor: '#FFF' },
-    viberModalTitle: { fontSize: 14, fontWeight: '800', marginBottom: 15, textAlign: 'center', width: '100%' },
-    viberModalRowBtn: { width: '100%', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', alignItems: 'center', cursor: 'pointer' },
-    viberCancelBtn: { marginTop: 15, width: '100%', height: 38, backgroundColor: '#EDF2F7', borderRadius: 10, justifyContent: 'center', alignItems: 'center', cursor: 'pointer' },
+    /* STYLE-I I RI ME FLOATING Z-INDEX PA OVERFLOW HIDDEN PËR WEB */
+    outsideInstagramBubble: { position: 'absolute', top: 32, right: 10, backgroundColor: '#ffffff', width: 140, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', elevation: 99, zIndex: 9999999, padding: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 6 },
+    instagramRowBtn: { paddingVertical: 10, paddingHorizontal: 12, width: '100%', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', cursor: 'pointer' },
 
-    floatingChatWrapper: { position: 'absolute', width: 310, height: 420, backgroundColor: '#FFF', borderRadius: 14, elevation: 12, overflow: 'hidden', zIndex: 99999, borderWidth: 1, borderColor: '#E2E8F0' },
-    maximizedWindow: { position: 'absolute', top: '12%', left: '25%', width: '50%', height: '70%', borderRadius: 16 },
+    dropdownBlueTxt: { color: '#3182CE', fontSize: 11, fontWeight: '800' },
+    dropdownOrangeTxt: { color: '#DD6B20', fontSize: 11, fontWeight: '800' },
+    dropdownRedTxt: { color: '#E53E3E', fontSize: 11, fontWeight: '800' },
+
+
+    floatingChatWrapper: { position: 'absolute', width: 310, height: 420, backgroundColor: '#FFF', borderRadius: 14, elevation: 30, zIndex: 9999999, borderWidth: 1, borderColor: '#E2E8F0' },
+    maximizedWindow: { position: 'absolute', top: '12%', left: '25%', width: '50%', height: '70%', borderRadius: 16, zIndex: 9999999 },
     bubbleDragHeader: { height: 40, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, cursor: 'move' },
     bubbleHeaderTitle: { color: '#FFF', fontWeight: '700', fontSize: 12, flex: 1 },
     headerControls: { flexDirection: 'row', gap: 10, alignItems: 'center' },
