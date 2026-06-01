@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, query, orderBy, getDocs, doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, getDocs, doc, updateDoc, arrayUnion, setDoc, getDoc } from 'firebase/firestore';
 import ChatScreen from './ChatScreen';
 
 export default function ProfileScreen({ user, onLogout }) {
@@ -55,7 +55,7 @@ export default function ProfileScreen({ user, onLogout }) {
         } catch (e) {
             console.log("Gabim load data:", e);
         } finally {
-            loading && setLoading(false);
+            if (loading) setLoading(false);
         }
     };
 
@@ -67,7 +67,6 @@ export default function ProfileScreen({ user, onLogout }) {
         if (!name) return 'Student';
         return String(name).replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
-
     const pickProfileImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (permissionResult.granted === false) {
@@ -80,7 +79,7 @@ export default function ProfileScreen({ user, onLogout }) {
             quality: 0.6,
         });
         if (!result.canceled) {
-            const selectedImg = result.assets.uri;
+            const selectedImg = result.assets[0].uri;
             try {
                 await AsyncStorage.setItem(`@PrishtinaConnect:avatar:${user?.email}`, selectedImg);
                 setProfileImage(selectedImg);
@@ -100,7 +99,7 @@ export default function ProfileScreen({ user, onLogout }) {
             quality: 0.7,
         });
         if (!result.canceled) {
-            setPostImage(result.assets.uri);
+            setPostImage(result.assets[0].uri);
         }
     };
 
@@ -153,29 +152,45 @@ export default function ProfileScreen({ user, onLogout }) {
             setDiscoverPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...(p.comments || []), newComment] } : p));
         } catch (e) { console.log(e); }
     };
-
-    // REQUEST-SYSTEM SYNC: Erstellt die private Unterhaltung sauber als 'pending' (Në Pritje)
+    // KORRIGJIMI SAKTË: Krijon dokumentin me të gjitha ID-të që të sinkronizohet me tabet në Channels
     const handleOpenDiscoverChat = async (postAuthorUid, authorName, authorFaculty) => {
         if (!postAuthorUid || !user?.uid) return;
 
-        const chatId = user.uid < postAuthorUid
-            ? `${user.uid}_${postAuthorUid}`
-            : `${postAuthorUid}_${user.uid}`;
+        const chatId = user.uid < postAuthorUid ? `${user.uid}_${postAuthorUid}` : `${postAuthorUid}_${user.uid}`;
+        let initialStatus = 'none';
 
         try {
-            await setDoc(doc(db, 'chat_requests', chatId), {
-                status: 'pending',
-                senderId: user.uid,
-                receiverId: postAuthorUid,
-                createdAt: new Date().toISOString()
-            }, { merge: true });
-        } catch(e) { console.log(e); }
+            const reqDocSnap = await getDoc(doc(db, 'chat_requests', chatId));
+            if (reqDocSnap.exists()) {
+                const reqData = reqDocSnap.data();
+                if (reqData.status === 'accepted') {
+                    initialStatus = 'accepted';
+                } else if (reqData.senderId === user.uid) {
+                    initialStatus = 'pending';
+                } else {
+                    initialStatus = 'incoming';
+                }
+            } else {
+                // REGJISTRIMI I PLOTË I FUSHAVE PËR REFRESH LOGIKËN LIVE
+                await setDoc(doc(db, 'chat_requests', chatId), {
+                    id: chatId,
+                    status: 'pending',
+                    senderId: user.uid,
+                    receiverId: postAuthorUid,
+                    createdAt: new Date().toISOString()
+                }, { merge: true });
+                initialStatus = 'pending';
+            }
+        } catch(e) {
+            console.log("Gabim te kërkesa nga profili:", e);
+        }
 
         setActiveChatSession({
             id: chatId,
             name: formatNickname(authorName),
             isPrivate: true,
-            targetUser: { id: postAuthorUid, faculty: authorFaculty, email: `${authorName}@uni-pr.edu` }
+            initialStatus: initialStatus, // I kalon saktë statusi dritares lundruese
+            targetUser: { id: postAuthorUid, faculty: authorFaculty, email: `${authorName}@student.uni-pr.edu` }
         });
         setIsMaximized(false);
         setChatPosition({ x: 20, y: 105 });
@@ -188,6 +203,7 @@ export default function ProfileScreen({ user, onLogout }) {
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color="#0B2545" size="large" /></View>;
+
     return (
         <View style={{ flex: 1, width: '100%' }} onMouseMove={(e) => isDragging && !isMaximized && setChatPosition({ x: dragStart.x - e.clientX, y: dragStart.y - e.clientY })} onMouseUp={() => setIsDragging(false)}>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.profileContainer, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
@@ -222,7 +238,6 @@ export default function ProfileScreen({ user, onLogout }) {
                         <Text style={[styles.subTabText, activeSubTab === 'discover' && styles.subTabTextActive]}>✨ Get to Know People</Text>
                     </TouchableOpacity>
                 </View>
-
                 {activeSubTab === 'posts' ? (
                     <View style={{ width: '100%' }}>
                         <View style={[styles.newPostBox, themeStyles.card]}>
@@ -330,6 +345,7 @@ export default function ProfileScreen({ user, onLogout }) {
         </View>
     );
 }
+
 const styles = StyleSheet.create({
     profileContainer: { flexGrow: 1, padding: 14, alignItems: 'center', width: '100%' },
     lightContainer: { backgroundColor: '#F0F4F8' }, darkContainer: { backgroundColor: '#1A202C' },
@@ -382,8 +398,7 @@ const styles = StyleSheet.create({
     commentsCountTxt: { fontSize: 12, color: '#718096', fontWeight: '600' },
     commentsContainer: { backgroundColor: 'rgba(0,0,0,0.01)', padding: 8, borderRadius: 10, marginBottom: 8 },
     commentRow: { flexDirection: 'row', marginVertical: 2, paddingHorizontal: 4 },
-    commentAuthor: { fontSize: 11, fontWeight: '800' },
-    commentContent: { fontSize: 11, fontWeight: '500' },
+    commentAuthor: { fontSize: 11, fontWeight: '800' }, commentContent: { fontSize: 11, fontWeight: '500' },
     commentInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, width: '100%' },
     commentField: { flex: 1, height: 32, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, fontSize: 12 },
     commentSubmitBtn: { width: 32, height: 32, backgroundColor: '#EEB902', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },

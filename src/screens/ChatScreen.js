@@ -3,13 +3,13 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, Keyboard
 import MessageBubble from '../components/MessageBubble';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 
 export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const { user, isDarkMode } = useAuth();
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    const [requestStatus, setRequestStatus] = useState('accepted');
+    const [requestStatus, setRequestStatus] = useState(selectedChannel?.initialStatus || 'accepted');
     const [loading, setLoading] = useState(true);
     const [showViberMenu, setShowViberMenu] = useState(false);
 
@@ -27,16 +27,16 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                     if (data.status === 'accepted') {
                         setRequestStatus('accepted');
                     } else if (data.senderId === user.uid) {
-                        setRequestStatus('pending'); // Ti e ke dërguar kërkesën
+                        setRequestStatus('pending'); // Ti e ke dërguar kërkesën -> Do të dalë te "Në Pritje"
                     } else {
-                        setRequestStatus('incoming'); // Dikush tjetër ta ka sjellë ty
+                        setRequestStatus('incoming'); // Të ka ardhur ty -> Do të dalë te "Kërkesat"
                     }
                 } else {
-                    setRequestStatus('none');
+                    setRequestStatus('none'); // Bisedë krejtësisht e re pa kërkesë ende
                 }
                 setLoading(false);
             }, (error) => {
-                console.log("Gabim te kërkesa:", error);
+                console.log("Gabim live stream kërkesa:", error);
                 setRequestStatus('none');
                 setLoading(false);
             });
@@ -54,7 +54,7 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
             setMessages(list);
         }, (error) => {
-            console.log("Gabim te mesazhet:", error);
+            console.log("Gabim live stream mesazhet:", error);
         });
 
         return () => unsubscribeMessages();
@@ -70,34 +70,34 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         }
         return cleanStr.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
-    // KORRIGJIMI I SAKTË: Dërgimi i mesazhit nuk e bën automatikisht accepted, statusi qëndron ashtu siç është
+
     const handleSendMessage = async () => {
         if (!newMessage.trim() || !user?.uid || !selectedChannel?.id) return;
 
         const currentText = newMessage.trim();
         setNewMessage('');
 
-        try {
-            // Kontrollojmë nëse kërkesa ekziston tashmë në Firestore
-            const reqDocRef = doc(db, 'chat_requests', selectedChannel.id);
-            const reqDoc = await getDocs(query(collection(db, 'chat_requests')));
+        if (selectedChannel.isPrivate && requestStatus === 'none') {
+            try {
+                // RREGULLIMI I SAKTË: Nxerrja e ID-së së saktë të partnerit nga ID e bisedës unike
+                const idParts = selectedChannel.id.split('_');
+                const extractedReceiverId = idParts.find(id => id !== user.uid) || selectedChannel.targetUser?.id || '';
 
-            // Nëse biseda është krejtësisht e re (statusi none), krijohet si 'pending'
-            if (selectedChannel.isPrivate && requestStatus === 'none') {
+                const reqDocRef = doc(db, 'chat_requests', selectedChannel.id);
                 await setDoc(reqDocRef, {
+                    id: selectedChannel.id,
                     status: 'pending',
                     senderId: user.uid,
-                    receiverId: selectedChannel.targetUser?.id || '',
+                    receiverId: extractedReceiverId,
                     createdAt: new Date().toISOString()
                 }, { merge: true });
                 setRequestStatus('pending');
+            } catch (e) {
+                console.log("Gabim kritik gjatë krijimit të dokumentit të kërkesës:", e);
             }
-        } catch (e) {
-            console.log("Gabim me statusin e kërkesës:", e);
         }
 
         try {
-            // Shtohet mesazhi i rregullt në nën-koleksion
             await addDoc(collection(db, 'channels', selectedChannel.id, 'messages'), {
                 text: currentText,
                 createdAt: new Date().toISOString(),
@@ -105,7 +105,7 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 email: user.email || 'student@uni-pr.edu'
             });
         } catch (e) {
-            console.log("Gabim gjatë dërgimit të mesazhit:", e);
+            console.log("Gabim gjatë shtimit të mesazhit në Firestore:", e);
         }
     };
 
@@ -125,33 +125,30 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         } catch (e) { console.log(e); }
     };
 
-    // RREGULLIMI PËRFUNDIMTAR: Fshirja e bisedës (Delete Chat) fshin dokumentin kryesor dhe mesazhet asinkronisht
     const handleDeleteChatComplete = async () => {
         if (!selectedChannel?.id) return;
         setShowViberMenu(false);
 
         try {
-            // 1. Fshijmë dokumentin e kërkesës kryesore që biseda të hiqet live nga listat e Inbox-it
-            await deleteDoc(doc(db, 'chat_requests', selectedChannel.id));
+            const batch = writeBatch(db);
+            const reqDocRef = doc(db, 'chat_requests', selectedChannel.id);
+            batch.delete(reqDocRef);
 
-            // 2. Fshijmë të gjitha mesazhet brenda nën-koleksionit 'messages' përmes ID-ve direkte të Firebase
             const messagesSnapshot = await getDocs(collection(db, 'channels', selectedChannel.id, 'messages'));
-            for (const msgDoc of messagesSnapshot.docs) {
-                await deleteDoc(doc(db, 'channels', selectedChannel.id, 'messages', msgDoc.id));
-            }
+            messagesSnapshot.forEach((msgDoc) => {
+                const msgDocRef = doc(db, 'channels', selectedChannel.id, 'messages', msgDoc.id);
+                batch.delete(msgDocRef);
+            });
 
+            await batch.commit();
             Alert.alert("Biseda u fshi 🗑️", "Historiku i kësaj bisede u pastrua plotësisht.");
-            onBack(); // Mbyllet automatikisht dritarja e bisedës për të rifreskuar listat në ekranin tjetër
+            if (onBack) onBack();
         } catch (e) {
-            console.log("Gabim kritik gjatë fshirjes së bisedës:", e);
+            console.log("Gabim kritik gjatë fshirjes me batch:", e);
         }
     };
 
-    if (!selectedChannel || !selectedChannel.id) {
-        return <View style={styles.center}><ActivityIndicator color="#0B2545" /></View>;
-    }
-
-    if (loading) {
+    if (!selectedChannel || !selectedChannel.id || loading) {
         return <View style={styles.center}><ActivityIndicator color="#0B2545" /></View>;
     }
     return (
@@ -179,51 +176,46 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 </View>
             )}
 
-            {hideHeader && selectedChannel.isPrivate && (
-                <View style={styles.embeddedHeaderControls}>
-                    <TouchableOpacity onPress={() => setShowViberMenu(!showViberMenu)} style={styles.embeddedThreeDots} activeOpacity={0.7}>
-                        <Text style={{ fontWeight: '800', color: isDarkMode ? '#EEB902' : '#0B2545', fontSize: 11 }}>
-                            {showViberMenu ? '🔼 Mbyll Opsionet' : '⚙️ Opsionet e Bisedës (⋮)'}
-                        </Text>
-                    </TouchableOpacity>
-                    {showViberMenu && (
-                        <View style={[styles.embeddedDropdown, isDarkMode ? styles.darkCard : styles.lightCard]}>
-                            <TouchableOpacity style={styles.dropdownItem} onPress={handleDeleteChatComplete} activeOpacity={0.6}>
-                                <Text style={styles.dropdownDeleteTxt}>🗑️ Fshij Historikun</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                </View>
-            )}
-
             <FlatList
                 data={messages}
                 keyExtractor={(item) => item.id}
                 inverted
-                renderItem={({ item }) => <MessageBubble text={item.text} email={item.email} isMe={item.uid === user.uid} />}
+                contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
+                renderItem={({ item }) => {
+                    const isMe = item.uid === user.uid;
+                    return <MessageBubble text={item.text} email={item.email} isMe={isMe} imageUri={item.imageUri} />;
+                }}
             />
 
-            {/* KËRKESAT E ARDHURA: Marrësi e ka të bllokuar shkrimin derisa të pranojë kërkesën */}
-            {requestStatus === 'incoming' && (
+            {selectedChannel.isPrivate && requestStatus === 'incoming' && (
                 <View style={styles.alertBox}>
-                    <Text style={styles.alertTxt}>💬 Kërkesë e re për bisedë në kohë reale.</Text>
+                    <Text style={styles.alertTxt}>Prano kërkesën nga {selectedChannel.name} për të biseduar?</Text>
                     <View style={styles.row}>
                         <TouchableOpacity style={styles.denyBtn} onPress={handleDeny}>
-                            <Text style={{ color: '#D93025', fontWeight: '700', fontSize: 11 }}>Injoro</Text>
+                            <Text style={{ color: '#C53030', fontWeight: '700', fontSize: 12 }}>Refuzo</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.acceptBtn} onPress={handleAccept}>
-                            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 11 }}>Prano</Text>
+                            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Prano</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             )}
 
-            {/* INPUT-I I CHAT-IT: Shfaqet për dërguesin (pending) ose pasi pranohet kërkesa (accepted) */}
-            {(requestStatus === 'accepted' || requestStatus === 'pending' || requestStatus === 'none') && (
+            {/* BLLOKIMI I SHKRIMIT: Aktivizohet te dërguesi automatikisht sapo shkruan mesazhin e parë */}
+            {selectedChannel.isPrivate && requestStatus === 'pending' && (
+                <View style={styles.alertBox}>
+                    <Text style={[styles.alertTxt, { color: '#718096', fontStyle: 'italic', textAlign: 'center' }]}>
+                        ⏳ Kërkesa u dërgua. Qasja në shkrim bllokohet derisa studenti ta pranojë bisedën tuaj.
+                    </Text>
+                </View>
+            )}
+
+            {/* INPUTI I SHKRIMIT: Lejohet vetëm nëse biseda është e re fare (none) ose nëse është pranuar (accepted) */}
+            {(requestStatus === 'accepted' || requestStatus === 'none') && (
                 <View style={styles.inputRow}>
                     <TextInput
                         style={styles.input}
-                        placeholder={requestStatus === 'pending' ? "Në pritje të konfirmimit... Shkruaj këtu..." : "Shkruaj një mesazh..."}
+                        placeholder="Shkruaj një mesazh..."
                         value={newMessage}
                         onChangeText={setNewMessage}
                         placeholderTextColor="#A0AEC0"
@@ -248,14 +240,8 @@ const styles = StyleSheet.create({
     threeDotsBtn: { paddingHorizontal: 8, paddingVertical: 4 }, threeDotsTxt: { color: '#FFF', fontSize: 18, fontWeight: '900' },
     viberDropdown: { position: 'absolute', top: 34, right: 0, backgroundColor: '#FFF', width: 150, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 5, zIndex: 99999 },
     dropdownItem: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, width: '100%', alignItems: 'center' },
+    dropdownDeleteRow: { padding: 6, width: '100%' },
     dropdownDeleteTxt: { color: '#E53E3E', fontSize: 12, fontWeight: '800', letterSpacing: -0.2 },
-
-    embeddedHeaderControls: { position: 'relative', width: '100%', zIndex: 9999 },
-    embeddedThreeDots: { paddingVertical: 10, backgroundColor: '#F8FAFC', alignItems: 'center', borderBottomWidth: 1, borderColor: '#E2E8F0' },
-    embeddedDropdown: { backgroundColor: '#FFF', alignItems: 'center', padding: 2, position: 'absolute', top: 38, right: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 12, zIndex: 99999, width: 140 },
-    lightCard: { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' },
-    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
-
     inputRow: { flexDirection: 'row', padding: 8, alignItems: 'center', backgroundColor: '#F0F4F8', borderTopWidth: 1, borderColor: '#E2E8F0' },
     input: { flex: 1, height: 34, backgroundColor: '#FFF', borderRadius: 17, paddingHorizontal: 12, fontSize: 13, borderWidth: 1, borderColor: '#CCD0D5', color: '#000' },
     sendBtn: { width: 34, height: 34, backgroundColor: '#0B2545', borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginLeft: 6 },

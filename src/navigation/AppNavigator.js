@@ -28,12 +28,10 @@ export default function AppNavigator() {
         );
     }
 
-    // Wenn KEIN Benutzer eingeloggt ist, zeige den LoginScreen
     if (!user) {
         return <LoginScreen />;
     }
 
-    // Wenn ein Benutzer eingeloggt ist, zeige direkt das Dashboard
     const containerStyle = isDarkMode ? styles.darkContainer : styles.lightContainer;
 
     return (
@@ -52,7 +50,6 @@ export default function AppNavigator() {
                 )}
             </View>
 
-            {/* Bottom Navigation Bar */}
             <View style={styles.tabBarContainer}>
                 <View style={[styles.floatingTabBar, isDarkMode && styles.darkTabBar]}>
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'channels' && styles.activeTab]} onPress={() => setCurrentTab('channels')}>
@@ -84,6 +81,7 @@ export default function AppNavigator() {
         </View>
     );
 }
+
 const styles = StyleSheet.create({
     container: { flex: 1 },
     lightContainer: { backgroundColor: '#F0F4F8' },

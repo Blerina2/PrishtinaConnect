@@ -6,7 +6,6 @@ import AppNavigator from './navigation/AppNavigator';
 function MainAppContent() {
     const { isDarkMode, toggleTheme, loading, user } = useAuth();
 
-    // Kontrolli asinkron për të parandaluar dëbimin (logout) pas refresh-it
     if (loading) {
         return (
             <View style={[styles.loadingScreen, isDarkMode ? styles.darkBg : styles.lightBg]}>
@@ -25,7 +24,6 @@ function MainAppContent() {
                 backgroundColor={isDarkMode ? '#1A202C' : '#0B2545'}
             />
 
-            {/* Header-i shfaqet vetëm nëse studenti është i kyçur brenda */}
             {user && (
                 <View style={[styles.header, isDarkMode ? styles.darkHeader : styles.lightHeader]}>
                     <View style={styles.headerLeft}>
@@ -63,11 +61,9 @@ const styles = StyleSheet.create({
     darkBg: { backgroundColor: '#1A202C' },
     loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     loadingText: { marginTop: 15, fontSize: 14, fontWeight: '700' },
-
     header: { height: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, zIndex: 10 },
     lightHeader: { backgroundColor: '#0B2545', borderBottomColor: '#EEB902', shadowColor: '#000' },
     darkHeader: { backgroundColor: '#2D3748', borderBottomColor: '#EEB902', shadowColor: '#000' },
-
     headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     headerLogo: { fontSize: 24 },
     headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },

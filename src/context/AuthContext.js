@@ -25,7 +25,6 @@ export function AuthProvider({ children }) {
         };
         loadTheme();
 
-        // Echtzeit-Listener: Reagiert SOFORT auf Login/Logout ohne Refresh
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setLoading(true);
             if (firebaseUser) {

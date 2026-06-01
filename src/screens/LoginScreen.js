@@ -4,10 +4,10 @@ import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { isUPStudent } from '../config/firebase';
-import { useAuth } from '../context/AuthContext'; // Context importiert
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
-    const { setUser } = useAuth(); // Zugriff auf den globalen Zustand
+    const { setUser } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
@@ -17,7 +17,7 @@ export default function LoginScreen() {
 
     const falkultetet = [
         { id: 'FIEK', icon: '💻' }, { id: 'FSHMN', icon: '🔬' },
-        { id: 'DIF', icon: '🏃‍♂️' }, { id: 'Ekonomik', icon: '📊' },
+        { id: 'DIF', icon: '🏃\u200d♂️' }, { id: 'Ekonomik', icon: '📊' },
         { id: 'Juridik', icon: '⚖️' }, { id: 'Mjekësi', icon: '🩺' }
     ];
 
@@ -46,6 +46,7 @@ export default function LoginScreen() {
 
         try {
             if (isRegistering) {
+                // Krijimi i llogarisë së re
                 const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
                 const newUser = {
                     email: cleanEmail,
@@ -53,15 +54,18 @@ export default function LoginScreen() {
                     uid: userCredential.user.uid,
                     createdAt: new Date().toISOString()
                 };
+
+                // Ruajtja e të dhënave në Firestore
                 await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
+
                 Alert.alert('Sukses 🎉', `Llogaria u krijua! Ju lutem kyçuni tani.`);
                 setIsRegistering(false);
                 setPassword('');
             } else {
-                // Login ausführen
+                // Procesi i Kyçjes (Login)
                 const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
 
-                // Sofortige Firestore-Abfrage nach dem Klick, um UI direkt umzuschalten
+                // Leximi i të dhënave të profilit nga Firestore
                 const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
                 if (userDoc.exists()) {
                     setUser({ uid: userCredential.user.uid, ...userDoc.data() });
@@ -70,13 +74,25 @@ export default function LoginScreen() {
                 }
             }
         } catch (err) {
-            console.error("Auth Error:", err.code);
-            if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+            console.error("Auth Error i plotë:", err);
+
+            // Menaxhimi i saktë i gabimeve të Firebase v9+ në Web
+            if (
+                err.code === 'auth/user-not-found' ||
+                err.code === 'auth/wrong-password' ||
+                err.code === 'auth/invalid-credential' ||
+                err.code === 'auth/invalid-email'
+            ) {
                 setError('Email-i ose fjalëkalimi është i gabuar ose llogaria nuk ekziston.');
             } else if (err.code === 'auth/email-already-in-use') {
                 setError('Ky email është i regjistruar paraprakisht.');
+            } else if (err.code === 'auth/weak-password') {
+                setError('Fjalëkalimi duhet të jetë së paku 6 karaktere.');
+            } else if (err.code === 'auth/network-request-failed') {
+                setError('Problem me rrjetin. Kontrolloni lidhjen tuaj të internetit.');
             } else {
-                setError('Problem me autorizim. Provoni përsëri.');
+                // Nëse ka gabim tjetër (p.sh. lejet e Firestore), të tregon kodin ekzakte në ekran
+                setError(`Gabim: ${err.code || 'Problem me autorizim'}. Provoni përsëri.`);
             }
         } finally {
             setAuthLoading(false);
@@ -94,12 +110,27 @@ export default function LoginScreen() {
 
                 <View style={styles.inputWrapper}>
                     <Text style={styles.inputLabel}>E-mail adresa zyrtare</Text>
-                    <TextInput style={styles.input} placeholder="emri.mbiemri@student.uni-pr.edu" placeholderTextColor="#A0AEC0" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="emri.mbiemri@student.uni-pr.edu"
+                        placeholderTextColor="#A0AEC0"
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                    />
                 </View>
 
                 <View style={styles.inputWrapper}>
                     <Text style={styles.inputLabel}>Fjalëkalimi</Text>
-                    <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor="#A0AEC0" secureTextEntry value={password} onChangeText={setPassword} />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="••••••••"
+                        placeholderTextColor="#A0AEC0"
+                        secureTextEntry
+                        value={password}
+                        onChangeText={setPassword}
+                    />
                 </View>
 
                 {isRegistering && (
@@ -107,7 +138,11 @@ export default function LoginScreen() {
                         <Text style={styles.facultyTitle}>Zgjedh Fakultetin Tënd</Text>
                         <View style={styles.facultyGrid}>
                             {falkultetet.map((fak) => (
-                                <TouchableOpacity key={fak.id} style={[styles.facultyButton, selectedFaculty === fak.id && styles.facultyActive]} onPress={() => setSelectedFaculty(fak.id)}>
+                                <TouchableOpacity
+                                    key={fak.id}
+                                    style={[styles.facultyButton, selectedFaculty === fak.id && styles.facultyActive]}
+                                    onPress={() => setSelectedFaculty(fak.id)}
+                                >
                                     <Text style={styles.facultyIcon}>{fak.icon} {fak.id}</Text>
                                 </TouchableOpacity>
                             ))}
