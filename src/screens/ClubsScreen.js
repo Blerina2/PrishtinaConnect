@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import MessageBubble from '../components/MessageBubble';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../config/firebase';
+import { collection, addDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 export default function ClubsScreen() {
     const { user, isDarkMode } = useAuth();
     const [activeClub, setActiveClub] = useState(null);
     const [clubMessages, setClubMessages] = useState([]);
     const [newMsg, setNewMsg] = useState('');
+    const [loadingMessages, setLoadingMessages] = useState(false);
 
     const currentStudentProfile = {
         email: user?.email || 'student@student.uni-pr.edu',
@@ -22,16 +25,36 @@ export default function ClubsScreen() {
         { id: 'c4', name: '⚖️ Klubi i Debatit Juridik - UP', allowedDept: 'Juridik', icon: '🏛', desc: 'Simulime të seancave gjyqësore, analiza të ligjeve të reja.' },
         { id: 'c5', name: '🔬 Kërkimet Shkencore FSHMN', allowedDept: 'FSHMN', icon: '🧪', desc: 'Grupi i biologëve, kimistëve dhe matematikanëve për laboratorë.' },
         { id: 'c6', name: '🩺 Portal i Mjekësisë Klinike', allowedDept: 'Mjekësi', icon: '🏥', desc: 'Diskutime mbi praktikat mjekësore, anatominë universitare.' },
-        { id: 'c7', name: '🏃‍♂️ Klubi Olimpik studentor DIF', allowedDept: 'DIF', icon: '🏆', desc: 'Organizimi i garave sportive universitare dhe rekreacionit.' },
+        { id: 'c7', name: '🏃\u200dmë Klubi Olimpik studentor DIF', allowedDept: 'DIF', icon: '🏆', desc: 'Organizimi i garave sportive universitare dhe rekreacionit.' },
         { id: 'c8', name: '📢 Bashkimi Studentor i UP-së', allowedDept: 'ALL', icon: '🎓', desc: 'Organizimi i përgjithshëm studentor për të gjitha fakultetet e UP-së.' }
     ]);
 
+    // DËGJUESI LIVE: Ngarkon mesazhet nga Firestore saktësisht për klubin e hapur
     useEffect(() => {
-        if (!activeClub) return;
-        setClubMessages([
-            { id: 'cm1', text: `Mirëseerdhët në hapësirën zyrtare të klubit!`, email: 'profesor.up@student.uni-pr.edu', uid: '999' },
-            { id: 'cm2', text: `Përshëndetje kolegë, kur mbahet takimi?`, email: 'kolegu@student.uni-pr.edu', uid: '888' }
-        ]);
+        if (!activeClub) {
+            setClubMessages([]);
+            return;
+        }
+
+        setLoadingMessages(true);
+        const q = query(
+            collection(db, 'clubs', activeClub.id, 'messages'),
+            orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = [];
+            snapshot.forEach((doc) => {
+                list.push({ id: doc.id, ...doc.data() });
+            });
+            setClubMessages(list);
+            setLoadingMessages(false);
+        }, (error) => {
+            console.log("Gabim live stream te mesazhet e klubit:", error);
+            setLoadingMessages(false);
+        });
+
+        return () => unsubscribe();
     }, [activeClub]);
 
     const handleEnterClub = (club) => {
@@ -45,11 +68,22 @@ export default function ClubsScreen() {
         setActiveClub(club);
     };
 
-    const handleSendClubMessage = () => {
-        if (!newMsg.trim()) return;
-        const msgObj = { id: 'm_' + Date.now(), text: newMsg.trim(), createdAt: new Date().toISOString(), uid: currentStudentProfile.uid, email: currentStudentProfile.email };
-        setClubMessages(prev => [msgObj, ...prev]);
+    // DËRGIMI LIVE: Ruhet direkt në cloud nën koleksionin e klubit
+    const handleSendClubMessage = async () => {
+        if (!newMsg.trim() || !activeClub) return;
+        const currentText = newMsg.trim();
         setNewMsg('');
+
+        try {
+            await addDoc(collection(db, 'clubs', activeClub.id, 'messages'), {
+                text: currentText,
+                createdAt: new Date().toISOString(),
+                uid: currentStudentProfile.uid,
+                email: currentStudentProfile.email
+            });
+        } catch (e) {
+            console.log("Gabim gjatë dërgimit në klub:", e);
+        }
     };
 
     const themeStyles = {
@@ -57,7 +91,6 @@ export default function ClubsScreen() {
         text: isDarkMode ? styles.darkText : styles.lightText,
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
-
     if (activeClub) {
         return (
             <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -68,19 +101,35 @@ export default function ClubsScreen() {
                     <Text style={styles.clubHeaderTitle} numberOfLines={1}>{activeClub.name}</Text>
                 </View>
 
-                <FlatList
-                    data={clubMessages}
-                    keyExtractor={(item) => item.id}
-                    inverted
-                    renderItem={({ item }) => {
-                        const isMe = item.uid === currentStudentProfile.uid;
-                        return <MessageBubble text={item.text} email={item.email} isMe={isMe} />;
-                    }}
-                />
+                {/* LISTE DER LIVE-NACHRICHTEN */}
+                {loadingMessages ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator color="#0B2545" size="large" />
+                    </View>
+                ) : (
+                    <FlatList
+                        data={clubMessages}
+                        keyExtractor={(item) => item.id}
+                        inverted
+                        renderItem={({ item }) => {
+                            const isMe = item.uid === currentStudentProfile.uid;
+                            return <MessageBubble text={item.text} email={item.email} isMe={isMe} />;
+                        }}
+                    />
+                )}
 
+                {/* EINGABEFELD MIT ENTER-TASTEN-SUPPORT */}
                 <View style={[styles.inputContainer, isDarkMode && { backgroundColor: '#1A202C' }]}>
                     <View style={[styles.inputWrapper, isDarkMode && { backgroundColor: '#2D3748' }]}>
-                        <TextInput style={[styles.chatInput, isDarkMode && { color: '#FFFFFF' }]} placeholder={`Shkruaj në klub...`} placeholderTextColor="#A0AEC0" value={newMsg} onChangeText={setNewMsg} />
+                        <TextInput
+                            style={[styles.chatInput, isDarkMode && { color: '#FFFFFF' }]}
+                            placeholder={`Shkruaj në klub...`}
+                            placeholderTextColor="#A0AEC0"
+                            value={newMsg}
+                            onChangeText={setNewMsg}
+                            onSubmitEditing={handleSendClubMessage} /* FIX: Sendet bei Enter */
+                            blurOnSubmit={false} /* FIX: Behält den Fokus für schnelles Tippen */
+                        />
                         <TouchableOpacity style={styles.sendButton} onPress={handleSendClubMessage}>
                             <Text style={styles.sendButtonText}>✈️</Text>
                         </TouchableOpacity>
@@ -122,7 +171,7 @@ export default function ClubsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 14 },
+    container: { flex: 1, padding: 14, paddingBottom: 85, position: 'relative', zIndex: 10 },
     lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
     darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
     lightText: { color: '#0B2545' },
@@ -140,13 +189,25 @@ const styles = StyleSheet.create({
     clubDesc: { fontSize: 13, lineHeight: 19, marginBottom: 16, fontWeight: '500' },
     joinButton: { backgroundColor: '#0B2545', height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#EEB902' },
     joinButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+
     clubHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#0B2545', borderBottomWidth: 2, borderBottomColor: '#EEB902', marginHorizontal: -14, marginTop: -14, marginBottom: 10 },
     backButton: { marginRight: 15, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
     backButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
     clubHeaderTitle: { fontSize: 15, fontWeight: '800', color: '#ffffff', flex: 1 },
-    inputContainer: { padding: 12, backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#E2E8F0', marginHorizontal: -14, marginBottom: -14 },
+
+    /* WEB-FOOTER SICHERUNG: Abstand erhöht, um perfekt über der Navigationsleiste zu stehen */
+    inputContainer: {
+        padding: 12,
+        backgroundColor: '#ffffff',
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+        marginHorizontal: -14,
+        marginBottom: 12, /* Drückt das Feld ein Stück höher über den Footer */
+        zIndex: 9999999
+    },
     inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F4F8', borderRadius: 24, paddingHorizontal: 6, paddingVertical: 4 },
     chatInput: { flex: 1, height: 40, paddingHorizontal: 14, color: '#0B2545', fontSize: 14 },
     sendButton: { width: 36, height: 36, backgroundColor: '#0B2545', borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
     sendButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 }
 });
+
