@@ -1,26 +1,32 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import LoginScreen from '../screens/LoginScreen';
+import { auth } from '../config/firebase';
 import ChannelsScreen from '../screens/ChannelsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import NewsScreen from '../screens/NewsScreen';
 import ClubsScreen from '../screens/ClubsScreen';
 import MaterialsScreen from '../screens/MaterialsScreen';
+import StudentLifeScreen from '../screens/StudentLifeScreen';
 
 export default function AppNavigator() {
     const { user, setUser, loading, isDarkMode } = useAuth();
     const [currentTab, setCurrentTab] = useState('channels');
 
-    const handleLogout = () => {
-        setCurrentTab('channels');
-        setUser(null);
+    const handleLogout = async () => {
+        try {
+            setCurrentTab('channels');
+            await auth.signOut();
+            setUser(null);
+        } catch (e) {
+            console.log("Gabim gjatë çkyçjes:", e);
+        }
     };
 
     if (loading) {
         return (
             <View style={[styles.loadingScreen, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
-                <ActivityIndicator size="large" color="#EEB902" />
+                <ActivityIndicator size="large" color="#4F46E5" />
                 <Text style={{ marginTop: 10, color: isDarkMode ? '#FFF' : '#0B2545', fontWeight: '600' }}>
                     Duke verifikuar seancën...
                 </Text>
@@ -28,14 +34,11 @@ export default function AppNavigator() {
         );
     }
 
-    if (!user) {
-        return <LoginScreen />;
-    }
-
     const containerStyle = isDarkMode ? styles.darkContainer : styles.lightContainer;
 
     return (
         <View style={[styles.container, containerStyle]}>
+            {/* CONTAINER FOR CORE CONTENT MOUNTING */}
             <View style={styles.mainContent}>
                 {currentTab === 'channels' ? (
                     <ChannelsScreen />
@@ -45,11 +48,13 @@ export default function AppNavigator() {
                     <NewsScreen />
                 ) : currentTab === 'clubs' ? (
                     <ClubsScreen />
+                ) : currentTab === 'lifestyle' ? (
+                    <StudentLifeScreen />
                 ) : (
                     <ProfileScreen user={user} onLogout={handleLogout} />
                 )}
             </View>
-
+            {/* INTEGRATED FLOATING BOTTOM TAB BAR WITH 6 DIRECTORIES */}
             <View style={styles.tabBarContainer}>
                 <View style={[styles.floatingTabBar, isDarkMode && styles.darkTabBar]}>
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'channels' && styles.activeTab]} onPress={() => setCurrentTab('channels')}>
@@ -59,7 +64,7 @@ export default function AppNavigator() {
 
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'materials' && styles.activeTab]} onPress={() => setCurrentTab('materials')}>
                         <Text style={styles.tabIcon}>📁</Text>
-                        <Text style={[styles.tabText, currentTab === 'materials' && styles.activeTabText]}>Materiale</Text>
+                        <Text style={[styles.tabText, currentTab === 'materials' && styles.activeTabText]}>Material</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'news' && styles.activeTab]} onPress={() => setCurrentTab('news')}>
@@ -70,6 +75,11 @@ export default function AppNavigator() {
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'clubs' && styles.activeTab]} onPress={() => setCurrentTab('clubs')}>
                         <Text style={styles.tabIcon}>🚀</Text>
                         <Text style={[styles.tabText, currentTab === 'clubs' && styles.activeTabText]}>Klube</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'lifestyle' && styles.activeTab]} onPress={() => setCurrentTab('lifestyle')}>
+                        <Text style={styles.tabIcon}>✨</Text>
+                        <Text style={[styles.tabText, currentTab === 'lifestyle' && styles.activeTabText]}>Jeta</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={[styles.tabItem, currentTab === 'profile' && styles.activeTab]} onPress={() => setCurrentTab('profile')}>
@@ -85,15 +95,15 @@ export default function AppNavigator() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     lightContainer: { backgroundColor: '#F0F4F8' },
-    darkContainer: { backgroundColor: '#1A202C' },
+    darkContainer: { backgroundColor: '#080E1A' },
     mainContent: { flex: 1 },
     loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    tabBarContainer: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },
-    floatingTabBar: { flexDirection: 'row', backgroundColor: '#0B2545', width: '100%', maxWidth: 500, height: 66, borderRadius: 33, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'space-around', shadowColor: '#0B2545', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-    darkTabBar: { backgroundColor: '#2D3748', shadowColor: '#000', borderColor: '#4A5568' },
-    tabItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 24, flex: 1 },
-    activeTab: { backgroundColor: 'rgba(255,255,255,0.15)', borderBottomWidth: 2, borderBottomColor: '#EEB902' },
-    tabIcon: { fontSize: 18, marginBottom: 1 },
-    tabText: { fontSize: 10, fontWeight: '600', color: '#A0AEC0' },
+    tabBarContainer: { position: 'absolute', bottom: 15, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+    floatingTabBar: { flexDirection: 'row', backgroundColor: '#0F172A', width: '100%', maxWidth: 520, height: 66, borderRadius: 33, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'space-around', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12, borderWidth: 1, borderColor: 'rgba(79, 70, 229, 0.2)' },
+    darkTabBar: { backgroundColor: '#0F172A', shadowColor: '#000', borderColor: 'rgba(79, 70, 229, 0.3)' },
+    tabItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: 4, borderRadius: 20, flex: 1 },
+    activeTab: { backgroundColor: 'rgba(79, 70, 229, 0.15)', borderBottomWidth: 2, borderBottomColor: '#10B981' },
+    tabIcon: { fontSize: 16, marginBottom: 1 },
+    tabText: { fontSize: 9, fontWeight: '600', color: '#94A3B8' },
     activeTabText: { color: '#ffffff', fontWeight: '800' }
 });

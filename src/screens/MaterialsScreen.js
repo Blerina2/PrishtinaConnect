@@ -3,88 +3,142 @@ import { StyleSheet, Text, View, FlatList, TouchableOpacity, TextInput, Activity
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firebase';
 import { collection, addDoc, getDocs, query, orderBy, where } from 'firebase/firestore';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadFileToCloud } from '../utils/uploader';
 
 export default function MaterialsScreen() {
     const { user, isDarkMode } = useAuth();
     const [materials, setMaterials] = useState([]);
     const [title, setTitle] = useState('');
     const [linkUrl, setLinkUrl] = useState('');
-    const [selectedType, setSelectedType] = useState('Drive 📁'); // Kategoria fillestare
+    const [selectedType, setSelectedType] = useState('Drive 📁');
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+
+    // NEW STATE: Material text searching filter state tracker
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const [localFileUri, setLocalFileUri] = useState(null);
+    const [localFileName, setLocalFileName] = useState('');
 
     const studentFaculty = user?.faculty || 'FIEK';
 
     const llojet = [
         { id: 'Drive 📁', label: 'Google Drive' },
-        { id: 'Test 📝', label: 'Teste / Kuize' },
+        { id: 'Dokument 📄', label: 'PDF / Word' },
         { id: 'Foto 📸', label: 'Foto Provimi' }
     ];
 
-    // Ngarkimi i shpejtë i materialeve pa bllokuar uebin
-    const loadMaterials = async () => {
-        setLoading(true);
+    const handlePickDocument = async () => {
         try {
-            // FILTRIMI I RREPTË: Merr vetëm materialet që i përkasin fakultetit të studentit të kyçur
-            const q = query(
-                collection(db, 'materials'),
-                where('faculty', '==', studentFaculty),
-                orderBy('createdAt', 'desc')
-            );
-            const querySnapshot = await getDocs(q);
-            const list = [];
-            querySnapshot.forEach((doc) => {
-                list.push({ id: doc.id, ...doc.data() });
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+                copyToCacheDirectory: true
             });
-            setMaterials(list);
-        } catch (e) {
-            console.error("Gabim gjatë ngarkimit të materialeve:", e);
-        } finally {
-            setLoading(false);
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                setLocalFileUri(result.assets[0].uri);
+                setLocalFileName(result.assets[0].name);
+                setTitle(result.assets[0].name.split('.')[0]);
+            }
+        } catch (e) { console.log(e); }
+    };
+
+    const handlePickPhoto = async () => {
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (permissionResult.granted === false) {
+            Alert.alert("Refuzuar 🔒", "Lejoni qasjen.");
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true, quality: 0.7,
+        });
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setLocalFileUri(result.assets[0].uri);
+            setLocalFileName('foto_provimi_' + Date.now() + '.jpg');
         }
     };
 
-    useEffect(() => {
-        if (studentFaculty) {
-            loadMaterials();
-        }
-    }, [studentFaculty]);
+    const loadMaterials = async () => {
+        setLoading(true);
+        try {
+            const q = query(collection(db, 'materials'), where('faculty', '==', studentFaculty), orderBy('createdAt', 'desc'));
+            const querySnapshot = await getDocs(q);
+            const list = [];
+            querySnapshot.forEach((doc) => { list.push({ id: doc.id, ...doc.data() }); });
+            setMaterials(list);
+        } catch (e) { console.error(e); } finally { setLoading(false); }
+    };
 
+    useEffect(() => { if (studentFaculty) { loadMaterials(); } }, [studentFaculty]);
     const handleUploadMaterial = async () => {
-        if (!title.trim() || !linkUrl.trim()) {
-            Alert.alert("Gabim", "Ju lutem plotësoni titullin dhe linkun.");
+        if (!title.trim()) {
+            Alert.alert("Gabim", "Ju lutem shkruani një titull ose përshkrim.");
+            return;
+        }
+
+        if (selectedType === 'Drive 📁' && !linkUrl.trim()) {
+            Alert.alert("Gabim", "Ju lutem plotësoni linkun e Google Drive.");
+            return;
+        }
+
+        if (selectedType !== 'Drive 📁' && !localFileUri) {
+            Alert.alert("Gabim", "Ju lutem përzgjidhni një skedar ose foto nga pajisja.");
             return;
         }
 
         setSubmitting(true);
         try {
+            let finalUrl = null;
+
+            if (selectedType !== 'Drive 📁' && localFileUri) {
+                finalUrl = await uploadFileToCloud(localFileUri, 'materials_vault');
+            } else {
+                finalUrl = linkUrl.trim();
+            }
+
             const matObj = {
                 title: title.trim(),
-                linkUrl: linkUrl.trim(),
                 type: selectedType,
-                faculty: studentFaculty, // Ruhet me emrin e fakultetit specifik
-                uploadedBy: user?.email ? user.email.split('@')[0] : 'Student',
-                createdAt: new Date().toISOString()
+                faculty: studentFaculty,
+                uploadedBy: user?.email ? user.email.split('@') : 'Student',
+                createdAt: new Date().toISOString(),
+                linkUrl: finalUrl,
+                fileName: selectedType !== 'Drive 📁' ? localFileName : null
             };
 
             await addDoc(collection(db, 'materials'), matObj);
             setTitle('');
             setLinkUrl('');
+            setLocalFileUri(null);
+            setLocalFileName('');
 
-            // Rifresko listën menjëherë pas postimit
             await loadMaterials();
-            Alert.alert("Sukses 🎉", "Materiali akademik u nda me sukses!");
+            Alert.alert("Sukses 🎉", "Materiali u ngarkua në serverin Cloud me sukses!");
         } catch (err) {
             console.error(err);
-            Alert.alert("Gabim", "Ndodhi një problem gjatë postimit.");
+            Alert.alert("Gabim", "Ndodhi një problem gjatë ngarkimit në Cloud.");
         } finally {
             setSubmitting(false);
         }
     };
 
-    const handleOpenLink = (url) => {
-        Linking.openURL(url).catch(() => Alert.alert("Gabim", "Nuk mund të hapet ky link. Sigurohuni që fillon me http:// ose https://"));
+    const handleOpenMaterial = (item) => {
+        if (item.linkUrl) {
+            Linking.openURL(item.linkUrl).catch(() =>
+                Alert.alert("Gabim", "Nuk mund të hapet ky burim zyrtar.")
+            );
+        } else {
+            Alert.alert("Gabim", "Ky material nuk përmban një link valid.");
+        }
     };
+
+    // INTELLIGENT SEARCH FILTER ENGINE MATCH ROUTINE
+    const filteredMaterials = materials.filter(item =>
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.type.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     const themeStyles = {
         card: isDarkMode ? styles.darkCard : styles.lightCard,
@@ -101,15 +155,19 @@ export default function MaterialsScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* KUTIA E POSTIMIT TË MATERIALEVE */}
+            {/* UPLOAD FORM PANEL BOX */}
             <View style={[styles.uploadBox, themeStyles.card]}>
-                <Text style={styles.miniTitle}>Zgjedh llojin e materialit:</Text>
+                <Text style={styles.miniTitle}>Zgjedh llojin e burimit akademik:</Text>
                 <View style={styles.typeSelectorRow}>
                     {llojet.map((t) => (
                         <TouchableOpacity
                             key={t.id}
                             style={[styles.typeButton, selectedType === t.id && styles.typeButtonActive]}
-                            onPress={() => setSelectedType(t.id)}
+                            onPress={() => {
+                                setSelectedType(t.id);
+                                setLocalFileUri(null);
+                                setLocalFileName('');
+                            }}
                         >
                             <Text style={[styles.typeButtonText, selectedType === t.id && styles.typeButtonTextActive]}>{t.id}</Text>
                         </TouchableOpacity>
@@ -118,41 +176,66 @@ export default function MaterialsScreen() {
 
                 <TextInput
                     style={[styles.input, themeStyles.input]}
-                    placeholder="Emri i lëndës ose përshkrimi (p.sh. Matematika 1 - Afati Janar)"
+                    placeholder="Emri i lëndës ose përshkrimi (p.sh. Analiza 1 - Provimi)"
                     value={title}
                     onChangeText={setTitle}
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor="#94A3B8"
                 />
 
-                <TextInput
-                    style={[styles.input, themeStyles.input, { marginTop: 8 }]}
-                    placeholder="Linku i Google Drive ose i Fotos (https://...)"
-                    value={linkUrl}
-                    onChangeText={setLinkUrl}
-                    placeholderTextColor="#A0AEC0"
-                    autoCapitalize="none"
-                />
+                {selectedType === 'Drive 📁' ? (
+                    <TextInput
+                        style={[styles.input, themeStyles.input, { marginTop: 10 }]}
+                        placeholder="Linku i Google Drive (https://...)"
+                        value={linkUrl}
+                        onChangeText={setLinkUrl}
+                        placeholderTextColor="#94A3B8"
+                        autoCapitalize="none"
+                    />
+                ) : selectedType === 'Dokument 📄' ? (
+                    <TouchableOpacity style={styles.pickerSelectorBtn} onPress={handlePickDocument}>
+                        <Text style={styles.pickerSelectorTxt}>
+                            {localFileUri ? `✅ Përzgjedhur: ${localFileName}` : '📁 Zgjedh Dokument PDF / Word'}
+                        </Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity style={styles.pickerSelectorBtn} onPress={handlePickPhoto}>
+                        <Text style={styles.pickerSelectorTxt}>
+                            {localFileUri ? '✅ Foto e Provimit u shtua!' : '📸 Zgjedh Foto nga Galeria'}
+                        </Text>
+                    </TouchableOpacity>
+                )}
 
                 <TouchableOpacity style={styles.btn} onPress={handleUploadMaterial} disabled={submitting}>
                     {submitting ? (
                         <ActivityIndicator color="#FFF" />
                     ) : (
-                        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Shpërndaj me studentët e {studentFaculty} ➔</Text>
+                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Ngarko në Serverin Cloud ➔</Text>
                     )}
                 </TouchableOpacity>
             </View>
 
-            {/* LISTA E MATERIALEVE ENTIRELY ISOLATED */}
+            {/* INTEGRATED TEXT QUERY INPUT SEARCH BAR CONTAINER */}
+            <View style={styles.searchBarWrapperContainer}>
+                <TextInput
+                    style={[styles.searchTextInputField, themeStyles.input]}
+                    placeholder="🔍 Kërko materiale ose skedarë sipas lëndës..."
+                    placeholderTextColor="#94A3B8"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+            </View>
+
+            {/* TIMELINE LIST FEED DIRECTORY */}
             {loading ? (
                 <View style={styles.center}>
-                    <ActivityIndicator size="large" color="#0B2545" />
-                    <Text style={{ marginTop: 10, color: '#A0AEC0', fontWeight: '500' }}>Duke ngarkuar materialet ekskluzive...</Text>
+                    <ActivityIndicator size="large" color="#4F46E5" />
+                    <Text style={{ marginTop: 10, color: '#94A3B8', fontWeight: '600' }}>Duke sinkronizuar me cloud...</Text>
                 </View>
-            ) : materials.length === 0 ? (
-                <Text style={styles.emptyText}>Nuk ka ende materiale të ndarë për fakultetin {studentFaculty}. Bëhu i pari që ndan një Drive ose Foto!</Text>
+            ) : filteredMaterials.length === 0 ? (
+                <Text style={styles.emptyText}>Nuk u gjet asnjë material akademik për këtë kërkim.</Text>
             ) : (
                 <FlatList
-                    data={materials}
+                    data={filteredMaterials}
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={{ paddingBottom: 110 }}
                     renderItem={({ item }) => (
@@ -167,8 +250,10 @@ export default function MaterialsScreen() {
                             <Text style={[styles.matTitle, themeStyles.text]}>{item.title}</Text>
                             <Text style={styles.matAuthor}>👤 Nga: {item.uploadedBy}</Text>
 
-                            <TouchableOpacity style={styles.linkButton} onPress={() => handleOpenLink(item.linkUrl)}>
-                                <Text style={styles.linkButtonText}>Hap Burimin Zyrtar 🔗</Text>
+                            <TouchableOpacity style={styles.linkButton} onPress={() => handleOpenMaterial(item)}>
+                                <Text style={styles.linkButtonText}>
+                                    {item.type === 'Drive 📁' ? 'Hap Linkun e Drive 🔗' : item.type === 'Dokument 📄' ? 'Shkarko Dokumentin PDF / Word 📥' : 'Shiko Foton në Server 📸'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     )}
@@ -177,39 +262,49 @@ export default function MaterialsScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 16 },
-    lightBg: { backgroundColor: '#F0F4F8' }, darkBg: { backgroundColor: '#1A202C' },
-    lightCard: { backgroundColor: '#FFF', borderColor: '#E2E8F0' }, darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
-    lightText: { color: '#0B2545' }, darkText: { color: '#FFFFFF' },
-    lightInput: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', color: '#0B2545' }, darkInput: { backgroundColor: '#1A202C', borderColor: '#4A5568', color: '#FFFFFF' },
+    lightBg: { backgroundColor: '#F0F4F8' },
+    darkBg: { backgroundColor: '#080E1A' },
+    lightCard: { backgroundColor: '#FFF', borderColor: '#E2E8F0' },
+    darkCard: { backgroundColor: '#0F172A', borderColor: 'rgba(79, 70, 229, 0.2)' },
+    lightText: { color: '#0B2545' },
+    darkText: { color: '#FFFFFF' },
+    lightInput: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', color: '#0B2545' },
+    darkInput: { backgroundColor: '#1E293B', borderColor: 'rgba(255,255,255,0.05)', color: '#FFFFFF' },
 
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    title: { fontSize: 16, fontWeight: '800' },
-    refreshBtn: { backgroundColor: 'rgba(11, 37, 69, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-    refreshBtnText: { color: '#0B2545', fontSize: 12, fontWeight: '700' },
+    title: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+    refreshBtn: { backgroundColor: 'rgba(79, 70, 229, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+    refreshBtnText: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
 
-    uploadBox: { padding: 15, borderRadius: 16, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.03, elevation: 3, marginBottom: 15 },
-    miniTitle: { fontSize: 11, fontWeight: '700', color: '#718096', marginBottom: 8, textTransform: 'uppercase' },
+    uploadBox: { padding: 15, borderRadius: 24, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.03, elevation: 3, marginBottom: 15 },
+    miniTitle: { fontSize: 11, fontWeight: '800', color: '#818CF8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
     typeSelectorRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, gap: 6 },
-    typeButton: { flex: 1, paddingVertical: 8, backgroundColor: '#F0F4F8', borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
-    typeButtonActive: { backgroundColor: '#EEB902', borderColor: '#EEB902' },
-    typeButtonText: { fontSize: 11, fontWeight: '700', color: '#0B2545' },
-    typeButtonTextActive: { color: '#0B2545', fontWeight: '800' },
+    typeButton: { flex: 1, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: 'transparent' },
+    typeButtonActive: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
+    typeButtonText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+    typeButtonTextActive: { color: '#FFFFFF', fontWeight: '800' },
 
-    input: { height: 42, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13, fontWeight: '500' },
-    btn: { marginTop: 12, backgroundColor: '#0B2545', height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    input: { height: 44, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, fontSize: 13, fontWeight: '500' },
+    pickerSelectorBtn: { marginTop: 10, height: 44, backgroundColor: '#1E293B', borderWidth: 1.5, borderColor: 'rgba(79, 70, 229, 0.3)', borderRadius: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderStyle: 'dashed' },
+    pickerSelectorTxt: { color: '#818CF8', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+
+    btn: { marginTop: 12, backgroundColor: '#4F46E5', height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6 },
+
+    // NEW STYLE: Intelligent Search Bar styling wrappers
+    searchBarWrapperContainer: { width: '100%', marginBottom: 14 },
+    searchTextInputField: { width: '100%', height: 44, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14, fontSize: 13, fontWeight: '500' },
 
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 30 },
-    emptyText: { textAlign: 'center', color: '#A0AEC0', marginTop: 30, fontSize: 13, lineHeight: 20, paddingHorizontal: 20 },
-    matCard: { padding: 16, borderRadius: 14, marginVertical: 6, borderWidth: 1, elevation: 2 },
+    emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 30, fontSize: 13, lineHeight: 22, paddingHorizontal: 20, fontWeight: '500' },
+    matCard: { padding: 16, borderRadius: 24, marginVertical: 6, borderWidth: 1, elevation: 2 },
     matCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    badge: { backgroundColor: '#EBF8FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-    badgeText: { fontSize: 10, fontWeight: '800', color: '#2B6CB0' },
-    matDate: { fontSize: 10, color: '#A0AEC0', fontWeight: '700' },
-    matTitle: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
-    matAuthor: { fontSize: 11, color: '#718096', marginTop: 4, fontWeight: '600' },
-    linkButton: { marginTop: 12, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', padding: 10, borderRadius: 8, alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#0B2545' },
-    linkButtonText: { color: '#0B2545', fontWeight: '700', fontSize: 12 }
+    badge: { backgroundColor: 'rgba(79, 70, 229, 0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    badgeText: { fontSize: 10, fontWeight: '800', color: '#818CF8' },
+    matDate: { fontSize: 11, color: '#64748B', fontWeight: '700' },
+    matTitle: { fontSize: 14, fontWeight: '800', lineHeight: 20, letterSpacing: -0.2 },
+    matAuthor: { fontSize: 12, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+    linkButton: { marginTop: 12, backgroundColor: '#1E293B', borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#10B981' },
+    linkButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 }
 });

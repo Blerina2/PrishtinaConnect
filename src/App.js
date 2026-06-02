@@ -1,73 +1,121 @@
 import React from 'react';
-import { StyleSheet, View, Text, SafeAreaView, StatusBar, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppNavigator from './navigation/AppNavigator';
 
-function MainAppContent() {
-    const { isDarkMode, toggleTheme, loading, user } = useAuth();
+function CampusHeaderWrapper() {
+    // Ndryshimi i temës thirret live pa asnjë bllokim (lock) me klikim
+    const { isDarkMode, setIsDarkMode } = useAuth();
 
-    if (loading) {
-        return (
-            <View style={[styles.loadingScreen, isDarkMode ? styles.darkBg : styles.lightBg]}>
-                <ActivityIndicator size="large" color="#EEB902" />
-                <Text style={[styles.loadingText, { color: isDarkMode ? '#FFFFFF' : '#0B2545' }]}>
-                    Duke lidhur me portalin studentor...
-                </Text>
-            </View>
-        );
-    }
+    // Ngjyrat origjinale premium Cyber-Chic të llogaritura në kohë reale
+    const themeBg = isDarkMode ? '#0F172A' : '#FFFFFF';
+    const themeBorder = isDarkMode ? 'rgba(79, 70, 229, 0.2)' : '#E2E8F0';
+    const primaryText = isDarkMode ? '#FFFFFF' : '#0B2545';
+    const secondaryText = isDarkMode ? '#94A3B8' : '#64748B';
 
     return (
-        <SafeAreaView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]}>
-            <StatusBar
-                barStyle="light-content"
-                backgroundColor={isDarkMode ? '#1A202C' : '#0B2545'}
-            />
+        <View style={{ flex: 1, backgroundColor: isDarkMode ? '#080E1A' : '#F0F4F8' }}>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={themeBg} />
 
-            {user && (
-                <View style={[styles.header, isDarkMode ? styles.darkHeader : styles.lightHeader]}>
-                    <View style={styles.headerLeft}>
-                        <Text style={styles.headerLogo}>🏫</Text>
-                        <View>
-                            <Text style={styles.headerTitle}>Prishtina Connect</Text>
-                            <Text style={styles.headerSubtitle}>UNIVERSITETI I PRISHTINËS</Text>
+            {/* RIKTHIMI I HEADER-IT TËND ORIGJINAL DHE PRETTY ME EMOJI */}
+            <SafeAreaView style={{ backgroundColor: themeBg, zIndex: 999 }}>
+                <View style={[styles.headerRow, { backgroundColor: themeBg, borderColor: themeBorder }]}>
+                    <View style={styles.brandContainer}>
+                        <View style={styles.titleRowWithEmoji}>
+                            <Text style={styles.campusEmojiIcon}>🏫</Text>
+                            <Text style={[styles.mainTitle, { color: primaryText }]}>Prishtina Connect</Text>
                         </View>
+                        <Text style={[styles.subTitle, { color: secondaryText }]}>🎓 UNIVERSITETI I PRISHTINËS</Text>
                     </View>
 
-                    <TouchableOpacity style={styles.themeButton} onPress={toggleTheme} activeOpacity={0.7}>
-                        <Text style={styles.themeIcon}>
-                            {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+                    {/* Butoni origjinal i dritave në të djathtë me emojit e saktë siç e kishit */}
+                    <TouchableOpacity
+                        style={[styles.toggleBtn, isDarkMode ? styles.btnDark : styles.btnLight]}
+                        onPress={() => setIsDarkMode(!isDarkMode)} // Ndryshon temën me klikim të lirë
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.toggleBtnTxt}>
+                            {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
                         </Text>
                     </TouchableOpacity>
                 </View>
-            )}
+            </SafeAreaView>
 
+            {/* NAVIGATORI KRYESOR I FAQEVE */}
             <AppNavigator />
-        </SafeAreaView>
+        </View>
     );
 }
 
 export default function App() {
     return (
         <AuthProvider>
-            <MainAppContent />
+            <CampusHeaderWrapper />
         </AuthProvider>
     );
 }
-
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    lightBg: { backgroundColor: '#F0F4F8' },
-    darkBg: { backgroundColor: '#1A202C' },
-    loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { marginTop: 15, fontSize: 14, fontWeight: '700' },
-    header: { height: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, borderBottomWidth: 3, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, zIndex: 10 },
-    lightHeader: { backgroundColor: '#0B2545', borderBottomColor: '#EEB902', shadowColor: '#000' },
-    darkHeader: { backgroundColor: '#2D3748', borderBottomColor: '#EEB902', shadowColor: '#000' },
-    headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    headerLogo: { fontSize: 24 },
-    headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
-    headerSubtitle: { color: '#EEB902', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, marginTop: 1 },
-    themeButton: { backgroundColor: 'rgba(255, 255, 255, 0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.2)' },
-    themeIcon: { color: '#ffffff', fontSize: 12, fontWeight: '800', textTransform: 'uppercase' }
+    headerRow: {
+        width: '100%',
+        height: 64,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        ...Platform.select({
+            ios: { paddingTop: 0 },
+            android: { paddingTop: 0 }
+        })
+    },
+    brandContainer: {
+        flexDirection: 'column',
+        justifyContent: 'center',
+    },
+    titleRowWithEmoji: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6
+    },
+    campusEmojiIcon: {
+        fontSize: 16,
+        marginRight: 2
+    },
+    mainTitle: {
+        fontSize: 16,
+        fontWeight: '900',
+        letterSpacing: -0.4
+    },
+    subTitle: {
+        fontSize: 9,
+        fontWeight: '800',
+        marginTop: 2,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase'
+    },
+    toggleBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 12,
+        borderWidth: 1,
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2
+    },
+    btnLight: {
+        backgroundColor: '#F1F5F9',
+        borderColor: '#E2E8F0',
+    },
+    btnDark: {
+        backgroundColor: '#1E293B',
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    toggleBtnTxt: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#818CF8',
+        letterSpacing: 0.2
+    }
 });

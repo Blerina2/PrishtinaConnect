@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Image, Alert } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Image, Alert, Modal } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
+import { updatePassword } from 'firebase/auth';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, query, orderBy, getDocs, doc, updateDoc, arrayUnion, setDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, arrayUnion, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { uploadFileToCloud } from '../utils/uploader';
 import ChatScreen from './ChatScreen';
 
 export default function ProfileScreen({ user, onLogout }) {
-    const { isDarkMode } = useAuth();
+    const { isDarkMode, setUser } = useAuth();
     const [profileImage, setProfileImage] = useState(null);
     const [myPosts, setMyPosts] = useState([]);
     const [discoverPosts, setDiscoverPosts] = useState([]);
@@ -21,52 +23,92 @@ export default function ProfileScreen({ user, onLogout }) {
     const [activeSubTab, setActiveSubTab] = useState('posts');
     const [activeChatSession, setActiveChatSession] = useState(null);
 
+    const [newPass, setNewPass] = useState('');
+    const [updatingPass, setUpdatingPass] = useState(false);
+    const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+
     const [isMaximized, setIsMaximized] = useState(false);
     const [chatPosition, setChatPosition] = useState({ x: 20, y: 105 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+    // NDREQJA FORMALE: Nxirret si tekst i thjeshtë që të mos bëjë crash charAt(0)
     const studentNickname = user?.email ? user.email.split('@')[0] : 'Student';
     const studentFaculty = user?.faculty || 'UP';
 
+    const falkultetetList = ['FIEK', 'FSHMN', 'DIF', 'Ekonomik', 'Juridik', 'Mjekësi'];
+
+    // RENDITJA LOKALE: Zgjidh loading-un pafund duke hequr nevojën për indeks në Firebase
     const loadAllProfileData = async () => {
         if (!user?.uid) return;
         try {
             const storedImage = await AsyncStorage.getItem(`@PrishtinaConnect:avatar:${user?.email}`);
             if (storedImage != null) setProfileImage(storedImage);
 
-            const allPostsQ = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-            const snapshot = await getDocs(allPostsQ);
+            // Heqim orderBy që kërkesa të kthejë të dhënat pa dështuar në sfond
+            const snapshot = await getDocs(collection(db, 'posts'));
 
             const mine = [];
             const others = [];
 
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.uid === user.uid) {
-                    mine.push({ id: doc.id, ...data });
-                } else {
-                    others.push({ id: doc.id, ...data });
-                }
+                const safePost = {
+                    id: doc.id,
+                    likes: data.likes || [],
+                    comments: data.comments || [],
+                    ...data
+                };
+                if (data.uid === user.uid) { mine.push(safePost); } else { others.push(safePost); }
             });
+
+            // Renditja bëhet në memorien lokale të telefonit
+            mine.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            others.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
             setMyPosts(mine);
             setDiscoverPosts(others);
         } catch (e) {
-            console.log("Gabim load data:", e);
+            console.log("Gabim gjatë ngarkimit:", e);
         } finally {
-            if (loading) setLoading(false);
+            setLoading(false); // Kjo e FIK rrethin e loading-ut në ekran në çdo sekondë!
         }
     };
 
-    useEffect(() => {
-        loadAllProfileData();
-    }, [user?.uid]);
+    useEffect(() => { loadAllProfileData(); }, [user?.uid]);
 
-    const formatNickname = (name) => {
-        if (!name) return 'Student';
-        return String(name).replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+    const handleUpdateSystemPassword = async () => {
+        if (!newPass.trim() || newPass.length < 6) {
+            Alert.alert("Gabim", "Fjalëkalimi i ri duhet të jetë së paku 6 karaktere.");
+            return;
+        }
+        setUpdatingPass(true);
+        try {
+            if (auth.currentUser) {
+                await updatePassword(auth.currentUser, newPass.trim());
+                setNewPass('');
+                Alert.alert("Sukses 🎉", "Fjalëkalimi juaj u përditësua.");
+            }
+        } catch (err) {
+            Alert.alert("Gabim", "Seanca skadoi. Ju lutem rikyçuni.");
+        } finally { setUpdatingPass(false); }
     };
+
+    const handleMigrateFaculty = async (newFaculty) => {
+        if (!user?.uid) return;
+        Alert.alert("Ndrysho Fakultetin 🏛️", `Kaloni në [${newFaculty}]?`, [
+            { text: "Anulo", style: "cancel" },
+            { text: "Ndrysho", onPress: async () => {
+                    try {
+                        await updateDoc(doc(db, 'users', user.uid), { faculty: newFaculty });
+                        setUser({ ...user, faculty: newFaculty });
+                        Alert.alert("Sukses 🎉", "Fakulteti u ndryshua.");
+                        await loadAllProfileData();
+                    } catch (e) { console.error(e); }
+                }}
+        ]);
+    };
+
     const pickProfileImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (permissionResult.granted === false) {
@@ -75,15 +117,16 @@ export default function ProfileScreen({ user, onLogout }) {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 0.6,
+            allowsEditing: true, quality: 0.6,
         });
-        if (!result.canceled) {
+        if (!result.canceled && result.assets && result.assets.length > 0) {
             const selectedImg = result.assets[0].uri;
+            setUploading(true);
             try {
-                await AsyncStorage.setItem(`@PrishtinaConnect:avatar:${user?.email}`, selectedImg);
-                setProfileImage(selectedImg);
-            } catch (e) { console.log(e); }
+                const remoteUrl = await uploadFileToCloud(selectedImg, 'avatars');
+                await AsyncStorage.setItem(`@PrishtinaConnect:avatar:${user?.email}`, remoteUrl);
+                setProfileImage(remoteUrl);
+            } catch (e) { console.log(e); } finally { setUploading(false); }
         }
     };
 
@@ -95,10 +138,9 @@ export default function ProfileScreen({ user, onLogout }) {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 0.7,
+            allowsEditing: true, quality: 0.7,
         });
-        if (!result.canceled) {
+        if (!result.canceled && result.assets && result.assets.length > 0) {
             setPostImage(result.assets[0].uri);
         }
     };
@@ -107,29 +149,37 @@ export default function ProfileScreen({ user, onLogout }) {
         if (!postText.trim() && !postImage) return;
         setUploading(true);
         try {
+            let remotePostImgUrl = null;
+            if (postImage) { remotePostImgUrl = await uploadFileToCloud(postImage, 'posts_media'); }
             await addDoc(collection(db, 'posts'), {
                 content: postText.trim(),
-                postImgUri: postImage,
+                postImgUri: remotePostImgUrl,
                 createdAt: new Date().toISOString(),
                 uid: user.uid,
                 author: studentNickname,
-                faculty: studentFaculty
+                faculty: studentFaculty,
+                likes: [], comments: []
             });
-            setPostText('');
-            setPostImage(null);
+            setPostText(''); setPostImage(null);
             await loadAllProfileData();
             Alert.alert("Sukses 🎉", "Postimi u publikua!");
         } catch (e) { console.log(e); } finally { setUploading(false); }
+    };
+
+    const handleDeletePost = async (postId) => {
+        Alert.alert("Fshij Postimin 🗑️", "A jeni i sigurt?", [
+            { text: "Anulo", style: "cancel" },
+            { text: "Fshij", style: "destructive", onPress: async () => {
+                    try { await deleteDoc(doc(db, 'posts', postId)); await loadAllProfileData(); } catch (e) { console.log(e); }
+                }}
+        ]);
     };
 
     const handleLikePost = async (postId, currentLikes = []) => {
         const postRef = doc(db, 'posts', postId);
         const hasLiked = currentLikes.includes(user.uid);
         try {
-            const updatedLikes = hasLiked
-                ? currentLikes.filter(id => id !== user.uid)
-                : [...currentLikes, user.uid];
-
+            const updatedLikes = hasLiked ? currentLikes.filter(id => id !== user.uid) : [...currentLikes, user.uid];
             await updateDoc(postRef, { likes: updatedLikes });
             setDiscoverPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: updatedLikes } : p));
         } catch (e) { console.log(e); }
@@ -138,58 +188,42 @@ export default function ProfileScreen({ user, onLogout }) {
     const handleAddComment = async (postId) => {
         const text = commentTexts[postId];
         if (!text || !text.trim()) return;
-
         const postRef = doc(db, 'posts', postId);
-        const newComment = {
-            author: studentNickname,
-            content: text.trim(),
-            createdAt: new Date().toISOString()
-        };
-
+        const newComment = { author: studentNickname, content: text.trim(), createdAt: new Date().toISOString() };
         try {
             await updateDoc(postRef, { comments: arrayUnion(newComment) });
             setCommentTexts(prev => ({ ...prev, [postId]: '' }));
             setDiscoverPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...(p.comments || []), newComment] } : p));
         } catch (e) { console.log(e); }
     };
-    // KORRIGJIMI SAKTË: Krijon dokumentin me të gjitha ID-të që të sinkronizohet me tabet në Channels
+
+    // RIKTHIMI I PLOTË I KODIT TËND ORIGJINAL: Lidh kanalet e bisedave me chat_requests
     const handleOpenDiscoverChat = async (postAuthorUid, authorName, authorFaculty) => {
         if (!postAuthorUid || !user?.uid) return;
-
         const chatId = user.uid < postAuthorUid ? `${user.uid}_${postAuthorUid}` : `${postAuthorUid}_${user.uid}`;
         let initialStatus = 'none';
-
         try {
             const reqDocSnap = await getDoc(doc(db, 'chat_requests', chatId));
             if (reqDocSnap.exists()) {
                 const reqData = reqDocSnap.data();
-                if (reqData.status === 'accepted') {
-                    initialStatus = 'accepted';
-                } else if (reqData.senderId === user.uid) {
-                    initialStatus = 'pending';
-                } else {
-                    initialStatus = 'incoming';
-                }
+                if (reqData.status === 'accepted') { initialStatus = 'accepted'; }
+                else if (reqData.senderId === user.uid) { initialStatus = 'pending'; }
+                else { initialStatus = 'incoming'; }
             } else {
-                // REGJISTRIMI I PLOTË I FUSHAVE PËR REFRESH LOGIKËN LIVE
                 await setDoc(doc(db, 'chat_requests', chatId), {
-                    id: chatId,
-                    status: 'pending',
-                    senderId: user.uid,
-                    receiverId: postAuthorUid,
-                    createdAt: new Date().toISOString()
+                    id: chatId, status: 'pending', senderId: user.uid, receiverId: postAuthorUid, createdAt: new Date().toISOString()
                 }, { merge: true });
-                initialStatus = 'pending';
+                initialStatus = 'none';
             }
         } catch(e) {
-            console.log("Gabim te kërkesa nga profili:", e);
+            console.log(e);
         }
 
         setActiveChatSession({
             id: chatId,
             name: formatNickname(authorName),
             isPrivate: true,
-            initialStatus: initialStatus, // I kalon saktë statusi dritares lundruese
+            initialStatus: initialStatus,
             targetUser: { id: postAuthorUid, faculty: authorFaculty, email: `${authorName}@student.uni-pr.edu` }
         });
         setIsMaximized(false);
@@ -202,16 +236,25 @@ export default function ProfileScreen({ user, onLogout }) {
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
 
-    if (loading) return <View style={styles.center}><ActivityIndicator color="#0B2545" size="large" /></View>;
-
+    if (loading) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator color="#0B2545" size="large" />
+            </View>
+        );
+    }
     return (
         <View style={{ flex: 1, width: '100%' }} onMouseMove={(e) => isDragging && !isMaximized && setChatPosition({ x: dragStart.x - e.clientX, y: dragStart.y - e.clientY })} onMouseUp={() => setIsDragging(false)}>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.profileContainer, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.profileContainer, isDarkMode ? styles.darkContainer : styles.lightContainer]} keyboardShouldPersistTaps="handled">
 
-                {/* PROFILE CARD */}
+                {/* KARTA ORIGJINALE E PROFILIT ME SETTINGS LINK */}
                 <View style={[styles.headerCard, themeStyles.card]}>
                     <TouchableOpacity style={styles.logoutTopButton} onPress={onLogout}>
                         <Text style={styles.logoutTopText}>Dalja 🚪</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.settingsBadgeLinkBtn} onPress={() => setShowSettingsDrawer(true)}>
+                        <Text style={styles.settingsBadgeLinkTxt}>⚙️ Settings</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.avatarButton} onPress={pickProfileImage} activeOpacity={0.85}>
@@ -229,7 +272,7 @@ export default function ProfileScreen({ user, onLogout }) {
                     <Text style={styles.emailText}>🏛️ Fakulteti: {studentFaculty} • {user?.email}</Text>
                 </View>
 
-                {/* TABS ROW */}
+                {/* RRESHTI ORIGJINAL I TAB-EVE */}
                 <View style={styles.subTabRow}>
                     <TouchableOpacity style={[styles.subTabBtn, activeSubTab === 'posts' && styles.subTabActive]} onPress={() => setActiveSubTab('posts')}>
                         <Text style={[styles.subTabText, activeSubTab === 'posts' && styles.subTabTextActive]}>📝 Postimet e Mia</Text>
@@ -248,7 +291,17 @@ export default function ProfileScreen({ user, onLogout }) {
                                 value={postText}
                                 onChangeText={setPostText}
                             />
-                            {postImage && <Image source={{ uri: postImage }} style={styles.previewPostImage} />}
+
+                            {/* INTEGRIMI I BUTONIT X PËR NDËRPRERJEN E FOTOS PROVIZORE */}
+                            {postImage && (
+                                <View style={styles.previewImageContainerWrapper}>
+                                    <Image source={{ uri: postImage }} style={styles.previewPostImage} />
+                                    <TouchableOpacity style={styles.removeDraftImageBadgeBtn} onPress={() => setPostImage(null)} activeOpacity={0.7}>
+                                        <Text style={styles.removeDraftImageTxt}>✕</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
                             <View style={styles.postActionsRow}>
                                 <TouchableOpacity style={styles.addPhotoBtn} onPress={pickPostImage}>
                                     <Text style={styles.addPhotoBtnText}>📸 Shto Foto</Text>
@@ -259,9 +312,15 @@ export default function ProfileScreen({ user, onLogout }) {
                             </View>
                         </View>
 
+                        {/* LISTA E POSTIMEVE TUAJA ME INSTALIMIN E KOSHIT TË FSHIRJES */}
                         {myPosts.map(item => (
                             <View key={item.id} style={[styles.feedCard, themeStyles.card]}>
-                                <Text style={[styles.feedContent, themeStyles.text]}>{item.content}</Text>
+                                <View style={styles.myPostHeaderContentInlineRow}>
+                                    <Text style={[styles.feedContent, themeStyles.text]}>{item.content}</Text>
+                                    <TouchableOpacity style={styles.deletePostDocBtn} onPress={() => handleDeletePost(item.id)} activeOpacity={0.7}>
+                                        <Text style={styles.deletePostDocTxt}>🗑️</Text>
+                                    </TouchableOpacity>
+                                </View>
                                 {item.postImgUri && <Image source={{ uri: item.postImgUri }} style={styles.feedImage} resizeMode="cover" />}
                                 <View style={styles.myPostFooter}>
                                     <Text style={styles.likesCountText}>❤️ {item.likes?.length || 0} pëlqime</Text>
@@ -310,7 +369,6 @@ export default function ProfileScreen({ user, onLogout }) {
                                             ))}
                                         </View>
                                     )}
-
                                     <View style={styles.commentInputRow}>
                                         <TextInput
                                             style={[styles.commentField, themeStyles.input]}
@@ -330,6 +388,42 @@ export default function ProfileScreen({ user, onLogout }) {
                 )}
             </ScrollView>
 
+            {/* DRITARJA POP-UP INTERAKTIVE E SETTINGS */}
+            <Modal animationType="fade" transparent={true} visible={showSettingsDrawer} onRequestClose={() => setShowSettingsDrawer(false)}>
+                <View style={styles.modalSettingsOverlay}>
+                    <View style={[styles.modalSettingsContent, themeStyles.card]}>
+                        <View style={styles.modalSettingsHeader}>
+                            <Text style={[styles.modalSettingsTitle, themeStyles.text]}>🛡️ Account Settings</Text>
+                            <TouchableOpacity style={styles.modalSettingsCloseBtn} onPress={() => setShowSettingsDrawer(false)}>
+                                <Text style={styles.modalSettingsCloseTxt}>Mbyll ×</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ flex: 1, marginTop: 6 }} keyboardShouldPersistTaps="handled">
+                            <View style={styles.settingsFormGroup}>
+                                <Text style={styles.settingsFormLabel}>Ndrysho Fjalëkalimin aktual</Text>
+                                <View style={styles.settingsInlineInputRow}>
+                                    <TextInput style={[styles.settingsInlineField, themeStyles.input]} placeholder="Fjalëkalimi i ri (min 6 karaktere)..." placeholderTextColor="#A0AEC0" secureTextEntry value={newPass} onChangeText={setNewPass} />
+                                    <TouchableOpacity style={styles.settingsInlineSubmitBtn} onPress={handleUpdateSystemPassword} disabled={updatingPass}>
+                                        {updatingPass ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.settingsInlineSubmitTxt}>Ruaj</Text>}
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                            <View style={[styles.settingsFormGroup, { marginBottom: 10 }]}>
+                                <Text style={styles.settingsFormLabel}>Ndërro Fakultetin (Migrimi i Profilis)</Text>
+                                <View style={styles.settingsFacultyGrid}>
+                                    {falkultetetList.map((fakItem) => (
+                                        <TouchableOpacity key={fakItem} style={[styles.settingsFacultyNodeBtn, studentFaculty === fakItem && styles.settingsFacultyNodeActive]} onPress={() => handleMigrateFaculty(fakItem)}>
+                                            <Text style={[styles.settingsFacultyNodeTxt, studentFaculty === fakItem && { color: '#FFF', fontWeight: '800' }]}>{fakItem}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* FLOATING DRAGGABLE CHAT CONTAINER */}
             {activeChatSession && (
                 <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
                     <View style={styles.bubbleDragHeader} onMouseDown={(e) => { if (!isMaximized) { setIsDragging(true); setDragStart({ x: e.clientX + chatPosition.x, y: e.clientY + chatPosition.y }); } }}>
@@ -345,7 +439,6 @@ export default function ProfileScreen({ user, onLogout }) {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     profileContainer: { flexGrow: 1, padding: 14, alignItems: 'center', width: '100%' },
     lightContainer: { backgroundColor: '#F0F4F8' }, darkContainer: { backgroundColor: '#1A202C' },
@@ -372,13 +465,13 @@ const styles = StyleSheet.create({
     newPostBox: { width: '100%', padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 12 },
     postInput: { width: '100%', height: 44, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, fontSize: 13 },
     previewPostImage: { width: '100%', height: 160, borderRadius: 10, marginTop: 8 },
-    postActionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, alignItems: 'center' },
+    postActionsRow: { flexDirection: 'row', timezone: 'UTC', justifyContent: 'space-between', marginTop: 8, alignItems: 'center' },
     addPhotoBtn: { backgroundColor: '#F0F4F8', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
     addPhotoBtnText: { color: '#4A5568', fontSize: 11, fontWeight: '700' },
     submitPostBtn: { backgroundColor: '#0B2545', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
     submitPostBtnText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
     feedCard: { width: '100%', padding: 14, borderRadius: 12, marginVertical: 6, borderWidth: 1 },
-    feedContent: { fontSize: 13, fontWeight: '500' },
+    feedContent: { fontSize: 13, fontWeight: '500', flex: 1 },
     myPostFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, alignItems: 'center' },
     likesCountText: { fontSize: 11, fontWeight: '700', color: '#E53E3E' },
     feedDate: { fontSize: 10, color: '#A0AEC0', textAlign: 'right' },
@@ -407,5 +500,33 @@ const styles = StyleSheet.create({
     bubbleDragHeader: { height: 40, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, cursor: 'move' },
     bubbleHeaderTitle: { color: '#FFF', fontWeight: '700', fontSize: 12, flex: 1 },
     headerControls: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-    controlBtn: { padding: 2 }, controlBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' }
+    controlBtn: { padding: 2 }, controlBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+
+    // PREVENT POPUP GRAPH OVERLAYS STYLES
+    settingsBadgeLinkBtn: { position: 'absolute', top: 12, left: 12, backgroundColor: '#F0F4F8', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+    settingsBadgeLinkTxt: { color: '#0B2545', fontSize: 11, fontWeight: '700' },
+    modalSettingsOverlay: { flex: 1, backgroundColor: 'rgba(11, 37, 69, 0.4)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+    modalSettingsContent: { width: '100%', maxWidth: 380, maxHeight: '75%', borderRadius: 20, padding: 16, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.15, elevation: 10 },
+    modalSettingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#EDF2F7', paddingBottom: 8, marginBottom: 6 },
+    modalSettingsTitle: { fontSize: 14, fontWeight: '800' },
+    modalSettingsCloseBtn: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#EDF2F7', borderRadius: 6 },
+    modalSettingsCloseTxt: { color: '#4A5568', fontSize: 11, fontWeight: '700' },
+    settingsFormGroup: { width: '100%', marginVertical: 6 },
+    settingsFormLabel: { fontSize: 10, fontWeight: '800', color: '#718096', textTransform: 'uppercase', marginBottom: 4 },
+    settingsInlineInputRow: { flexDirection: 'row', gap: 6, width: '100%', alignItems: 'center' },
+    settingsInlineField: { flex: 1, height: 36, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, fontSize: 12 },
+    settingsInlineSubmitBtn: { backgroundColor: '#0B2545', height: 36, paddingHorizontal: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+    settingsInlineSubmitTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+    settingsFacultyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
+    settingsFacultyNodeBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#F0F4F8', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' },
+    settingsFacultyNodeActive: { backgroundColor: '#0B2545', borderColor: '#0B2545' },
+    settingsFacultyNodeTxt: { color: '#4A5568', fontSize: 11, fontWeight: '700' },
+
+    // DRAFT INPUT PREVIEW BOX MARGINS
+    previewImageContainerWrapper: { width: '100%', height: 160, position: 'relative', marginTop: 8, borderRadius: 10, overflow: 'hidden' },
+    removeDraftImageBadgeBtn: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(15, 23, 42, 0.85)', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+    removeDraftImageTxt: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+    myPostHeaderContentInlineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, width: '100%' },
+    deletePostDocBtn: { padding: 4, backgroundColor: '#FFF5F5', borderRadius: 6, borderWidth: 1, borderColor: '#FED7D7' },
+    deletePostDocTxt: { fontSize: 12 }
 });

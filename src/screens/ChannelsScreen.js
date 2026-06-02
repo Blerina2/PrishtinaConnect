@@ -43,7 +43,6 @@ export default function ChannelsScreen() {
     const filteredChannels = channelsDataPool.filter(ch =>
         ch.department === studentFaculty || ch.department === 'ALL'
     );
-
     useEffect(() => {
         if (!user?.uid) return;
 
@@ -92,7 +91,7 @@ export default function ChannelsScreen() {
             unsubscribeRequests();
         };
     }, [user?.uid, usersList.length]);
-    // REITER-LOGIK: Sortiert private Anfragen und Chats live basierend auf dem members-Array
+
     const filterAllSections = (students, currentRequests) => {
         const chats = [];
         const fresh = [];
@@ -143,7 +142,6 @@ export default function ChannelsScreen() {
     };
 
     const hasNewRequestsGlobal = incomingRequests.length > 0;
-
     const handleOpenChatBubble = (channelOrUser, isPrivate = false) => {
         if (!channelOrUser) return;
 
@@ -193,7 +191,6 @@ export default function ChannelsScreen() {
         setChatPosition({ x: 20, y: 105 });
     };
 
-    // BANI PASTRIMIN E HISTORIKUT ME BATCH
     const handleClearMessagesOnly = async (targetStudent) => {
         if (!targetStudent || !targetStudent.currentRequestId) return;
         setSelectedStudentForAction(null);
@@ -212,7 +209,6 @@ export default function ChannelsScreen() {
         } catch (e) { console.log("Gabim gjatë fshirjes së historikut:", e); }
     };
 
-    // BANI FSHIRJEN E PLOTË TË BISEDËS ME BATCH
     const handleDeleteChatAndName = async (targetStudent) => {
         if (!targetStudent || !targetStudent.currentRequestId) return;
         setSelectedStudentForAction(null);
@@ -240,27 +236,23 @@ export default function ChannelsScreen() {
         text: isDarkMode ? styles.darkText : styles.lightText,
         input: isDarkMode ? styles.darkInput : styles.lightInput,
     };
-    // KORRIGJIMI TOTAL VIZUAL: Modali i vjetër i madh u fshi, mbetet vetëm flluska e vogël Instagram-Style
     function renderStudentItem(student, isIncomingRequest, themeStyles) {
         if (!student) return null;
         const studentUid = student.uid || student.id;
         const cleanName = formatNickname(student.email);
-
         const isBubbleOpen = selectedStudentForAction && selectedStudentForAction.id === studentUid;
 
         return (
             <View key={studentUid} style={styles.studentSearchItemWrapper}>
-                {/* Kartela e studentit */}
                 <TouchableOpacity
                     style={styles.studentSearchItem}
                     onPress={() => handleOpenChatBubble(student, true)}
                 >
                     <Text style={[styles.studentSearchName, themeStyles.text]}>
-                        👤 {cleanName} ({student.faculty || 'UP'}) {isIncomingRequest && <Text style={{ color: '#E53E3E' }}> 🔴</Text>}
+                        👤 {cleanName} ({student.faculty || 'UP'}) {isIncomingRequest && <Text style={{ color: '#EF4444' }}> 🔴</Text>}
                     </Text>
                 </TouchableOpacity>
 
-                {/* Zona e tri pikave anësore */}
                 <View style={{ position: 'relative', zIndex: 999999 }}>
                     <TouchableOpacity
                         style={styles.outsideThreeDotsBtn}
@@ -271,7 +263,7 @@ export default function ChannelsScreen() {
                     >
                         <Text style={[styles.outsideThreeDotsTxt, themeStyles.text]}>⋮</Text>
                     </TouchableOpacity>
-                    {/* FLLUSKA E RE INSTAGRAM-STYLE ME OPSIONIN UNFRIEND */}
+
                     {isBubbleOpen && (
                         <View style={styles.outsideInstagramBubble}>
                             <TouchableOpacity
@@ -298,7 +290,6 @@ export default function ChannelsScreen() {
                                 style={[styles.instagramRowBtn, { borderBottomWidth: 0 }]}
                                 onPress={(e) => {
                                     if (e && e.stopPropagation) e.stopPropagation();
-                                    // Thërret të njëjtin funksion fshirjeje totale pasi fshin lidhjen bazë dhe mesazhet
                                     handleDeleteChatAndName(selectedStudentForAction);
                                     Alert.alert("U largua nga miqtë 🚫", "Lidhja e shoqërisë u fshi komplet.");
                                 }}
@@ -307,7 +298,6 @@ export default function ChannelsScreen() {
                             </TouchableOpacity>
                         </View>
                     )}
-
                 </View>
             </View>
         );
@@ -393,7 +383,7 @@ export default function ChannelsScreen() {
                             </View>
                         ) : (
                             <View style={{ flex: 1 }}>
-                                <TextInput style={[styles.searchInput, themeStyles.input]} placeholder="Shkruaj emrin e studentit..." placeholderTextColor="#A0AEC0" value={searchStudent} onChangeText={setSearchStudent} />
+                                <TextInput style={[styles.searchInput, themeStyles.input]} placeholder="Shkruaj emrin e studentit..." placeholderTextColor="#94A3B8" value={searchStudent} onChangeText={setSearchStudent} />
                                 <ScrollView style={{ flex: 1, marginTop: 10 }}>
                                     {(usersList || [])
                                         .filter(s => s && s.email && typeof s.email === 'string' && formatNickname(s.email).toLowerCase().includes((searchStudent || '').toLowerCase()))
@@ -431,59 +421,55 @@ export default function ChannelsScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, paddingHorizontal: 12 },
-    lightBg: { backgroundColor: '#F8FAFC' }, darkBg: { backgroundColor: '#1A202C' },
-    lightCard: { backgroundColor: '#ffffff', borderColor: '#EEF2F6' }, darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    lightBg: { backgroundColor: '#F8FAFC' }, darkBg: { backgroundColor: '#080E1A' },
+    lightCard: { backgroundColor: '#ffffff', borderColor: '#EEF2F6' }, darkCard: { backgroundColor: '#0F172A', borderColor: 'rgba(79, 70, 229, 0.2)' },
     lightText: { color: '#0B2545' }, darkText: { color: '#FFFFFF' },
-    lightInput: { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0', color: '#0B2545' }, darkInput: { backgroundColor: '#1A202C', borderColor: '#4A5568', color: '#FFFFFF' },
+    lightInput: { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0', color: '#0B2545' }, darkInput: { backgroundColor: '#1E293B', borderColor: 'rgba(255,255,255,0.05)', color: '#FFFFFF' },
     mainHeaderRow: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4 },
     mainSectionTitle: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    channelItem: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 12, marginVertical: 4, borderWidth: 1, elevation: 1 },
-    hashCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(238, 185, 2, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-    hashText: { color: '#EEB902', fontWeight: '900', fontSize: 13 },
-    channelName: { fontSize: 13, fontWeight: '700' },
-    channelLabel: { fontSize: 10, color: '#718096', marginTop: 1 },
-    gmailFabButton: { position: 'absolute', bottom: 100, right: 16, width: 48, height: 48, borderRadius: 24, backgroundColor: '#0B2545', justifyContent: 'center', alignItems: 'center', elevation: 6, zIndex: 999, borderBottomWidth: 2.5, borderBottomColor: '#EEB902' },
-    gmailFabText: { fontSize: 16 },
-    fabNotificationBadge: { position: 'absolute', top: 1, right: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: '#E53E3E', borderWidth: 1.5, borderColor: '#FFF' },
+    channelItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, marginVertical: 6, borderWidth: 1, elevation: 1 },
+    hashCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(79, 70, 229, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    hashText: { color: '#4F46E5', fontWeight: '900', fontSize: 14 },
+    channelName: { fontSize: 14, fontWeight: '700' },
+    channelLabel: { fontSize: 11, color: '#718096', marginTop: 1 },
+    gmailFabButton: { position: 'absolute', bottom: 100, right: 16, width: 52, height: 52, borderRadius: 26, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', elevation: 6, zIndex: 999, shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 8 },
+    gmailFabText: { fontSize: 18 },
+    fabNotificationBadge: { position: 'absolute', top: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', borderWidth: 2, borderColor: '#FFF' },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 15, zIndex: 999999 },
-    modalContent: { width: '100%', maxWidth: 400, height: '60%', borderRadius: 16, padding: 16, borderWidth: 1, position: 'relative' },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    modalTitle: { fontSize: 13, fontWeight: '800' },
-    modalCloseBtn: { padding: 4, backgroundColor: '#FFF5F5', borderRadius: 6 },
-    modalCloseBtnTxt: { color: '#C53030', fontWeight: '700', fontSize: 11 },
-    modalTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 3, borderRadius: 8, marginVertical: 6 },
-    modalTabBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6 },
-    modalTabActive: { backgroundColor: '#FFF', elevation: 1 },
-    modalTabTxt: { fontSize: 11, fontWeight: '700', color: '#4A5568' },
-    modalSubTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 2.5, borderRadius: 6, marginVertical: 6, width: '100%' },
-    where: { flex: 1 },
-    modalSubTabBtn: { flex: 1, paddingVertical: 5, alignItems: 'center', borderRadius: 5 },
-    modalSubTabActive: { backgroundColor: '#FFF', elevation: 1 },
-    modalSubTabTxt: { fontSize: 10, fontWeight: '700', color: '#4A5568' },
-    subSectionHeaderTitle: { fontSize: 10, fontWeight: '800', marginTop: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 2 },
-    miniEmptyText: { fontSize: 11, color: '#A0AEC0', paddingHorizontal: 10, fontStyle: 'italic', marginVertical: 8, textAlign: 'center' },
-    searchInput: { height: 36, borderWidth: 1.2, borderRadius: 8, paddingHorizontal: 10, fontSize: 12 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 15, zIndex: 999999 },
+    modalContent: { width: '100%', maxWidth: 410, height: '65%', borderRadius: 24, padding: 18, borderWidth: 1, position: 'relative' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    modalTitle: { fontSize: 14, fontWeight: '800' },
+    modalCloseBtn: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#FEF2F2', borderRadius: 8 },
+    modalCloseBtnTxt: { color: '#EF4444', fontWeight: '700', fontSize: 12 },
+    modalTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 4, borderRadius: 10, marginVertical: 6 },
+    modalTabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+    modalTabActive: { backgroundColor: '#4F46E5', elevation: 1 },
+    modalTabTxt: { fontSize: 12, fontWeight: '700', color: '#94A3B8' },
+    modalSubTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.03)', padding: 3, borderRadius: 8, marginVertical: 6, width: '100%' },
+    modalSubTabBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6 },
+    modalSubTabActive: { backgroundColor: '#4F46E5', elevation: 1 },
+    modalSubTabTxt: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
+    miniEmptyText: { fontSize: 12, color: '#A0AEC0', paddingHorizontal: 10, fontStyle: 'italic', marginVertical: 10, textAlign: 'center' },
+    searchInput: { height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13 },
 
-    studentSearchItemWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.01)', borderRadius: 8, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative' },
-    studentSearchItem: { flex: 1, padding: 12 },
-    studentSearchName: { fontSize: 12, fontWeight: '700' },
-    outsideThreeDotsBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', cursor: 'pointer' },
-    outsideThreeDotsTxt: { fontSize: 16, fontWeight: '900' },
+    studentSearchItemWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.01)', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative' },
+    studentSearchItem: { flex: 1, padding: 14 },
+    studentSearchName: { fontSize: 13, fontWeight: '700' },
+    outsideThreeDotsBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+    outsideThreeDotsTxt: { fontSize: 18, fontWeight: '900' },
+    outsideInstagramBubble: { position: 'absolute', top: 36, right: 10, backgroundColor: '#0F172A', width: 150, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(79, 70, 229, 0.2)', elevation: 99, zIndex: 9999999, padding: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6 },
+    instagramRowBtn: { paddingVertical: 10, paddingHorizontal: 12, width: '100%', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+    dropdownBlueTxt: { color: '#60A5FA', fontSize: 12, fontWeight: '800' },
+    dropdownOrangeTxt: { color: '#F59E0B', fontSize: 12, fontWeight: '800' },
+    dropdownRedTxt: { color: '#EF4444', fontSize: 12, fontWeight: '800' },
+    floatingChatWrapper: { position: 'absolute', width: 320, height: 440, backgroundColor: '#FFF', borderRadius: 16, elevation: 30, zIndex: 9999999, borderWidth: 1, borderColor: '#E2E8F0' },
+    maximizedWindow: { position: 'absolute', top: '12%', left: '25%', width: '50%', height: '70%', borderRadius: 18, zIndex: 9999999 },
+    bubbleDragHeader: { height: 42, backgroundColor: '#0F172A', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+    bubbleHeaderTitle: { color: '#FFF', fontWeight: '700', fontSize: 13, flex: 1 },
+    headerControls: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    controlBtn: { padding: 2 },
+    controlBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' }
 
-    /* STYLE-I I RI ME FLOATING Z-INDEX PA OVERFLOW HIDDEN PËR WEB */
-    outsideInstagramBubble: { position: 'absolute', top: 32, right: 10, backgroundColor: '#ffffff', width: 140, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', elevation: 99, zIndex: 9999999, padding: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 6 },
-    instagramRowBtn: { paddingVertical: 10, paddingHorizontal: 12, width: '100%', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', cursor: 'pointer' },
-
-    dropdownBlueTxt: { color: '#3182CE', fontSize: 11, fontWeight: '800' },
-    dropdownOrangeTxt: { color: '#DD6B20', fontSize: 11, fontWeight: '800' },
-    dropdownRedTxt: { color: '#E53E3E', fontSize: 11, fontWeight: '800' },
-
-
-    floatingChatWrapper: { position: 'absolute', width: 310, height: 420, backgroundColor: '#FFF', borderRadius: 14, elevation: 30, zIndex: 9999999, borderWidth: 1, borderColor: '#E2E8F0' },
-    maximizedWindow: { position: 'absolute', top: '12%', left: '25%', width: '50%', height: '70%', borderRadius: 16, zIndex: 9999999 },
-    bubbleDragHeader: { height: 40, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, cursor: 'move' },
-    bubbleHeaderTitle: { color: '#FFF', fontWeight: '700', fontSize: 12, flex: 1 },
-    headerControls: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-    controlBtn: { padding: 2 }, controlBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' }
 });
+

@@ -9,8 +9,6 @@ export default function NewsScreen() {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(true);
-
-    // SHTETI I RI PËR KËRKIMIN E LAJMEVE 🔍
     const [searchQuery, setSearchQuery] = useState('');
 
     const studentFaculty = user?.faculty || 'UP';
@@ -36,7 +34,6 @@ export default function NewsScreen() {
         };
         loadLocalNews();
     }, []);
-
     const handlePostNews = async () => {
         if (!title.trim() || !content.trim()) return;
         Keyboard.dismiss();
@@ -47,7 +44,7 @@ export default function NewsScreen() {
             content: content.trim(),
             createdAt: new Date().toISOString(),
             author: user?.email ? user.email.split('@')[0] : 'Student',
-            faculty: studentFaculty
+            faculty: studentFaculty // Captures student's exact department automatically
         };
 
         const updatedNews = [newsObj, ...news];
@@ -57,13 +54,12 @@ export default function NewsScreen() {
             setNews(updatedNews);
             setTitle('');
             setContent('');
-            Alert.alert('Sukses 🎉', 'Njoftimi zyrtar u shpërnda me sukses në portal!');
+            Alert.alert('Sukses 🎉', `Njoftimi për [${studentFaculty}] u shpërnda me sukses!`);
         } catch (err) {
             console.log("Gabim gjatë ruajtjes së lajmit:", err);
         }
     };
 
-    // FILTRIMI I LAJMEVE NË KOHË REALE BAZUAR NË SEARCH BAR 🔍
     const filteredNews = news.filter(item =>
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.content.toLowerCase().includes(searchQuery.toLowerCase())
@@ -79,7 +75,7 @@ export default function NewsScreen() {
     if (loading) {
         return (
             <View style={[styles.centerContainer, themeStyles.container]}>
-                <ActivityIndicator size="small" color="#EEB902" />
+                <ActivityIndicator size="small" color="#4F46E5" />
             </View>
         );
     }
@@ -89,8 +85,8 @@ export default function NewsScreen() {
             {/* Kuti Postimi Luksoze */}
             <View style={[styles.postBox, themeStyles.card]}>
                 <Text style={[styles.boxTitle, themeStyles.text]}>📢 Shpërndaj një Njoftim Zyrtar</Text>
-                <TextInput style={[styles.input, themeStyles.input]} placeholder="Titulli i njoftimit..." placeholderTextColor="#A0AEC0" value={title} onChangeText={setTitle} />
-                <TextInput style={[styles.input, themeStyles.input, { height: 60, textAlignVertical: 'top', paddingTop: 8 }]} placeholder="Përmbajtja e detajuar..." placeholderTextColor="#A0AEC0" multiline value={content} onChangeText={setContent} />
+                <TextInput style={[styles.input, themeStyles.input]} placeholder="Titulli i njoftimit..." placeholderTextColor="#94A3B8" value={title} onChangeText={setTitle} />
+                <TextInput style={[styles.input, themeStyles.input, { height: 60, textAlignVertical: 'top', paddingTop: 8 }]} placeholder="Përmbajtja e detajuar..." placeholderTextColor="#94A3B8" multiline value={content} onChangeText={setContent} />
                 <TouchableOpacity style={styles.postButton} onPress={handlePostNews}>
                     <Text style={styles.postButtonText}>Publiko Lajmin ➔</Text>
                 </TouchableOpacity>
@@ -101,7 +97,7 @@ export default function NewsScreen() {
                 <TextInput
                     style={[styles.searchInput, themeStyles.input]}
                     placeholder="🔍 Kërko njoftime (p.sh. afati, provim)..."
-                    placeholderTextColor="#A0AEC0"
+                    placeholderTextColor="#94A3B8"
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                 />
@@ -133,40 +129,38 @@ export default function NewsScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     lightContainer: { backgroundColor: '#F0F4F8' },
-    darkContainer: { backgroundColor: '#1A202C' },
+    darkContainer: { backgroundColor: '#080E1A' },
     lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' },
-    darkCard: { backgroundColor: '#2D3748', borderColor: '#4A5568' },
+    darkCard: { backgroundColor: '#0F172A', borderColor: 'rgba(79, 70, 229, 0.2)' },
     lightText: { color: '#0B2545' },
     darkText: { color: '#FFFFFF' },
     lightSubText: { color: '#4A5568' },
     darkSubText: { color: '#CBD5E0' },
     lightInput: { backgroundColor: '#F8FAFC', color: '#0B2545', borderColor: '#E2E8F0' },
-    darkInput: { backgroundColor: '#1A202C', color: '#FFFFFF', borderColor: '#4A5568' },
+    darkInput: { backgroundColor: '#1E293B', color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.05)' },
 
     container: { flex: 1, padding: 14 },
     centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    postBox: { padding: 16, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.02, elevation: 2, marginBottom: 15, borderWidth: 1 },
-    boxTitle: { fontSize: 11, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase' },
-    input: { height: 42, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, marginBottom: 10, fontSize: 13, fontWeight: '500' },
-    postButton: { backgroundColor: '#0B2545', height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#EEB902' },
-    postButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
+    postBox: { padding: 16, borderRadius: 24, shadowColor: '#000', shadowOpacity: 0.02, elevation: 2, marginBottom: 15, borderWidth: 1 },
+    boxTitle: { fontSize: 11, fontWeight: '800', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#818CF8' },
+    input: { height: 44, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, marginBottom: 10, fontSize: 13, fontWeight: '500' },
+    postButton: { backgroundColor: '#4F46E5', height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6 },
+    postButtonText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
 
-    // Stili i Search Bar-it
     searchContainer: { marginBottom: 12, width: '100%' },
-    searchInput: { width: '100%', height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 14, fontSize: 13, fontWeight: '500' },
+    searchInput: { width: '100%', height: 42, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 14, fontSize: 13, fontWeight: '500' },
 
-    newsCard: { padding: 18, borderRadius: 20, marginVertical: 6, shadowColor: '#000', shadowOpacity: 0.02, elevation: 2, borderWidth: 1 },
+    newsCard: { padding: 18, borderRadius: 24, marginVertical: 6, shadowColor: '#000', shadowOpacity: 0.02, elevation: 2, borderWidth: 1 },
     cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 10 },
-    newsTitle: { fontSize: 14, fontWeight: '800', flex: 1, lineHeight: 19 },
-    facultyTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-    tagAll: { backgroundColor: '#E6FFFA' },
-    tagSpecific: { backgroundColor: '#EBF8FF' },
-    tagText: { fontSize: 9, fontWeight: '700', color: '#2B6CB0' },
-    newsContent: { fontSize: 13, lineHeight: 19, marginBottom: 12, fontWeight: '500' },
-    newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F0F4F8', paddingTop: 8 },
-    newsAuthor: { fontSize: 11, color: '#718096', fontWeight: '700' },
-    newsDate: { fontSize: 10, color: '#A0AEC0', fontWeight: '700' }
+    newsTitle: { fontSize: 14, fontWeight: '800', flex: 1, lineHeight: 19, letterSpacing: -0.2 },
+    facultyTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    tagAll: { backgroundColor: 'rgba(16, 185, 129, 0.12)' },
+    tagSpecific: { backgroundColor: 'rgba(79, 70, 229, 0.12)' },
+    tagText: { fontSize: 10, fontWeight: '800', color: '#818CF8' },
+    newsContent: { fontSize: 13, lineHeight: 20, marginBottom: 12, fontWeight: '500' },
+    newsFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 10 },
+    newsAuthor: { fontSize: 11, color: '#94A3B8', fontWeight: '700' },
+    newsDate: { fontSize: 11, color: '#64748B', fontWeight: '700' }
 });
