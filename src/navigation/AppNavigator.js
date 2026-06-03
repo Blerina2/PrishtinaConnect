@@ -1,7 +1,11 @@
+
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../config/firebase';
+
+// Importimi i të gjitha ekraneve kryesore
+import LoginScreen from '../screens/LoginScreen';
 import ChannelsScreen from '../screens/ChannelsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import NewsScreen from '../screens/NewsScreen';
@@ -13,16 +17,18 @@ export default function AppNavigator() {
     const { user, setUser, loading, isDarkMode } = useAuth();
     const [currentTab, setCurrentTab] = useState('channels');
 
+    // Funksioni për çkyçje të plotë nga aplikacioni
     const handleLogout = async () => {
         try {
             setCurrentTab('channels');
             await auth.signOut();
             setUser(null);
         } catch (e) {
-            console.log("Gabim gjatë çkyçjes:", e);
+            console.log("Gabim gjatë çkyçjes së plotë:", e);
         }
     };
 
+    // Shfaqja e ekranit të loading-ut gjatë verifikimit të përdoruesit
     if (loading) {
         return (
             <View style={[styles.loadingScreen, isDarkMode ? styles.darkContainer : styles.lightContainer]}>
@@ -34,8 +40,15 @@ export default function AppNavigator() {
         );
     }
 
-    const containerStyle = isDarkMode ? styles.darkContainer : styles.lightContainer;
+    // Barrierë Sigurie: Nëse nuk ka përdorues të kyçur, shfaqet ekrani i Login-it
+    if (!user || !user.uid) {
+        return <LoginScreen />;
+    }
 
+    const containerStyle = isDarkMode ? styles.darkContainer : styles.lightContainer;
+// ==========================================
+// AppNavigator.js - PJESA 2: PAMJA KRYESORE DHE STILET
+// ==========================================
     return (
         <View style={[styles.container, containerStyle]}>
             {/* CONTAINER FOR CORE CONTENT MOUNTING */}
@@ -51,9 +64,11 @@ export default function AppNavigator() {
                 ) : currentTab === 'lifestyle' ? (
                     <StudentLifeScreen />
                 ) : (
+                    // FIX: Këtu i kalojmë prop-et e plota në mënyrë që profili të punojë saktë
                     <ProfileScreen user={user} onLogout={handleLogout} />
                 )}
             </View>
+
             {/* INTEGRATED FLOATING BOTTOM TAB BAR WITH 6 DIRECTORIES */}
             <View style={styles.tabBarContainer}>
                 <View style={[styles.floatingTabBar, isDarkMode && styles.darkTabBar]}>

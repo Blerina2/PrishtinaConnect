@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Image } from 'react-native';
 import MessageBubble from '../components/MessageBubble';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../config/firebase';
@@ -14,13 +14,12 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const [loading, setLoading] = useState(true);
     const [showTrashMenu, setShowTrashMenu] = useState(false);
 
-    // LOGJIKA E RE: Kontrollet për panelin interaktiv Discord-Style
-    const [activeReactionMenu, setActiveReactionMenu] = useState(null); // Ruhet { messageId, currentReactions }
+    // Controls for the interactive Discord-Style panel drawer matrix
+    const [activeReactionMenu, setActiveReactionMenu] = useState(null); // Stores { messageId, currentReactions }
     const [currentDrawerTab, setCurrentDrawerTab] = useState('emoji'); // 'emoji' | 'gif' | 'sticker'
 
     const POPULAR_EMOJIS = ['🔥', '👍', '😂', '😮', '😢', '❤️', '🎉', '🚀'];
 
-    // Lista e GIF-eve akademike dhe argëtuese të simuluara lokal (mund të zëvendësohen me Giphy API)
     const MOCK_GIFS = [
         'https://giphy.com',
         'https://giphy.com',
@@ -32,7 +31,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         'https://gstatic.com',
         'https://gstatic.com'
     ];
-
     useEffect(() => {
         if (!selectedChannel?.id || !user?.uid) return;
 
@@ -67,7 +65,10 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     useEffect(() => {
         if (!selectedChannel?.id) return;
 
-        const q = query(collection(db, 'channels', selectedChannel.id, 'messages'), orderBy('createdAt', 'desc'));
+        // Points cleanly to unified /channels/[id]/messages schema matching firestore.rules
+        const messagesRef = collection(db, 'channels', selectedChannel.id, 'messages');
+        const q = query(messagesRef, orderBy('createdAt', 'desc'));
+
         const unsubscribeMessages = onSnapshot(q, (snapshot) => {
             const list = [];
             snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
@@ -89,7 +90,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         }
         return cleanStr.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
     };
-
     const handleSendMessage = async () => {
         if (!newMessage.trim() || !user?.uid || !selectedChannel?.id) return;
 
@@ -139,7 +139,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             setRequestStatus('accepted');
         } catch (e) { console.log(e); }
     };
-    // LOGJIKA E RE: Shton ose heq reaksionet në mënyrë të sinkronizuar (Discord Style)
     const handleToggleReaction = async (messageId, currentReactions = {}, emoji) => {
         if (!selectedChannel?.id) return;
         const messageRef = doc(db, 'channels', selectedChannel.id, 'messages', messageId);
@@ -160,13 +159,12 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
 
         try {
             await updateDoc(messageRef, { reactions: updatedReactions });
-            setActiveReactionMenu(null); // Mbyll menynë pas përzgjedhjes
+            setActiveReactionMenu(null);
         } catch (e) {
             console.log("Gabim me reaksionet:", e);
         }
     };
 
-    // LOGJIKA E RE: Mundësia për të zgjedhur dhe dërguar dokumente (PDF / Word)
     const handlePickDocument = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
@@ -189,7 +187,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         }
     };
 
-    // LOGJIKA E RE: Dërgimi i një GIF-i në bisedë
     const handleSendGif = async (url) => {
         if (!selectedChannel?.id) return;
         try {
@@ -203,7 +200,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         } catch (e) { console.log(e); }
     };
 
-    // LOGJIKA E RE: Dërgimi i një Sticker-i në bisedë
     const handleSendSticker = async (url) => {
         if (!selectedChannel?.id) return;
         try {
@@ -216,7 +212,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             setActiveReactionMenu(null);
         } catch (e) { console.log(e); }
     };
-
     const handleDeny = async () => {
         if (!selectedChannel?.id) return;
         try {
@@ -281,18 +276,14 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     }
     return (
         <KeyboardAvoidingView style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-
             {!hideHeader && (
                 <View style={styles.header}>
                     <TouchableOpacity onPress={onBack}><Text style={styles.headerText}>⬅ Kthehu</Text></TouchableOpacity>
                     <Text style={styles.headerTitle}>{selectedChannel.name}</Text>
-
                     {selectedChannel.isPrivate && (
-                        <View>
-                            <TouchableOpacity onPress={() => setShowTrashMenu(!showTrashMenu)} style={styles.trashcanBtn} activeOpacity={0.7}>
-                                <Text style={styles.trashcanIconTxt}>🗑️</Text>
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity onPress={() => setShowTrashMenu(!showTrashMenu)} style={styles.trashcanBtn} activeOpacity={0.7}>
+                            <Text style={styles.trashcanIconTxt}>🗑️</Text>
+                        </TouchableOpacity>
                     )}
                 </View>
             )}
@@ -301,19 +292,15 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 <View style={styles.chatInternalOverlay}>
                     <View style={styles.viberMasterTabContent}>
                         <Text style={styles.viberTabTitleTxt}>⚙️ Opsionet e Bisedës</Text>
-
                         <TouchableOpacity style={styles.viberTabRowBtn} onPress={handleClearMessagesOnly}>
                             <Text style={styles.dropdownBlueTxt}>🗑️ Pastro Historikun</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity style={styles.viberTabRowBtn} onPress={handleDeleteChatOnly}>
                             <Text style={styles.dropdownOrangeTxt}>❌ Fshij Bisedën</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity style={[styles.viberTabRowBtn, { borderBottomWidth: 0 }]} onPress={handleRemoveFromFriends}>
                             <Text style={styles.dropdownRedTxt}>🚫 Largo nga Miqtë</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity style={styles.viberTabCloseBtn} onPress={() => setShowTrashMenu(false)}>
                             <Text style={styles.viberTabCloseTxt}>Mbyll Opsionet ×</Text>
                         </TouchableOpacity>
@@ -326,34 +313,28 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                 keyExtractor={(item) => item.id}
                 inverted
                 contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 }}
-                renderItem={({ item }) => {
-                    const isMe = item.uid === user.uid;
-                    return (
-                        <MessageBubble
-                            text={item.text}
-                            email={item.email}
-                            isMe={isMe}
-                            imageUri={item.imageUri}
-                            fileUri={item.fileUri}
-                            fileName={item.fileName}
-                            gifUrl={item.gifUrl}
-                            stickerUrl={item.stickerUrl}
-                            reactions={item.reactions || {}} // Fixed fallback configuration
-                            messageId={item.id}
-                            currentUserId={user.uid}
-                            onReactionPress={handleToggleReaction}
-                            onOpenMenu={(msgId, currReacts) => setActiveReactionMenu({ messageId: msgId, currentReactions: currReacts || {} })}
-                        />
-                    );
-                }}
+                renderItem={({ item }) => (
+                    <MessageBubble
+                        text={item.text}
+                        email={item.email}
+                        isMe={item.uid === user.uid}
+                        imageUri={item.imageUri}
+                        fileUri={item.fileUri}
+                        fileName={item.fileName}
+                        gifUrl={item.gifUrl}
+                        stickerUrl={item.stickerUrl}
+                        reactions={item.reactions || {}}
+                        messageId={item.id}
+                        currentUserId={user.uid}
+                        onReactionPress={handleToggleReaction}
+                        onOpenMenu={(msgId, currReacts) => setActiveReactionMenu({ messageId: msgId, currentReactions: currReacts || {} })}
+                    />
+                )}
             />
 
-
-            {/* LOGLIKA E RE: PANELI DISCORD-STYLE PER EMOJIS, GIFS DHE STICKERS */}
             {activeReactionMenu && (
                 <View style={styles.discordDrawerOverlay}>
                     <View style={styles.discordDrawerContent}>
-                        {/* Tab-et e Kontrollit */}
                         <View style={styles.drawerTabRow}>
                             <TouchableOpacity style={[styles.drawerTabBtn, currentDrawerTab === 'emoji' && styles.drawerTabActive]} onPress={() => setCurrentDrawerTab('emoji')}>
                                 <Text style={styles.drawerTabTxt}>Emoji</Text>
@@ -365,8 +346,6 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                                 <Text style={styles.drawerTabTxt}>Stickers</Text>
                             </TouchableOpacity>
                         </View>
-
-                        {/* Përmbajtja e Tab-it të zgjedhur */}
                         <ScrollView style={{ flex: 1, marginVertical: 10 }}>
                             {currentDrawerTab === 'emoji' && (
                                 <View style={styles.emojiGrid}>
@@ -377,28 +356,25 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                                     ))}
                                 </View>
                             )}
-
                             {currentDrawerTab === 'gif' && (
                                 <View style={styles.mediaGrid}>
                                     {MOCK_GIFS.map((url, i) => (
-                                        <TouchableOpacity key={i} onPress={() => handleSendGif(url)}>
-                                            <Image source={{ uri: url }} style={styles.mediaGridImage} />
+                                        <TouchableOpacity key={i} style={{ width: '48%' }} onPress={() => handleSendGif(url)}>
+                                            <Image source={{ uri: url }} style={styles.mediaGridImageInternal} />
                                         </TouchableOpacity>
                                     ))}
                                 </View>
                             )}
-
                             {currentDrawerTab === 'sticker' && (
                                 <View style={styles.mediaGrid}>
                                     {MOCK_STICKERS.map((url, i) => (
-                                        <TouchableOpacity key={i} onPress={() => handleSendSticker(url)}>
-                                            <Image source={{ uri: url }} style={styles.stickerGridImage} />
+                                        <TouchableOpacity key={i} style={{ width: '30%', alignSelf: 'center' }} onPress={() => handleSendSticker(url)}>
+                                            <Image source={{ uri: url }} style={styles.stickerGridImageInternal} />
                                         </TouchableOpacity>
                                     ))}
                                 </View>
                             )}
                         </ScrollView>
-
                         <TouchableOpacity style={styles.drawerCloseBtn} onPress={() => setActiveReactionMenu(null)}>
                             <Text style={styles.drawerCloseTxt}>Mbyll</Text>
                         </TouchableOpacity>
@@ -427,13 +403,12 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
                     </Text>
                 </View>
             )}
+
             {(requestStatus === 'accepted' || requestStatus === 'none') && (
                 <View style={styles.inputRow}>
-                    {/* Butoni i ri për të zgjedhur skedarë PDF / Word */}
                     <TouchableOpacity style={styles.attachBtn} onPress={handlePickDocument} activeOpacity={0.7}>
                         <Text style={styles.attachBtnTxt}>📎</Text>
                     </TouchableOpacity>
-
                     <TextInput
                         style={styles.input}
                         placeholder="Shkruaj një mesazh..."
@@ -451,28 +426,23 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
         </KeyboardAvoidingView>
     );
 }
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF', position: 'relative' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     lightBg: { backgroundColor: '#FFF' }, darkBg: { backgroundColor: '#080E1A' },
     header: { height: 50, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, zIndex: 100 },
     headerText: { color: '#FFF', fontWeight: '700' }, headerTitle: { color: '#FFF', fontWeight: '700' },
-
     trashcanBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)' },
     trashcanIconTxt: { fontSize: 15 },
-
     chatInternalOverlay: { position: 'absolute', top: 50, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255, 255, 255, 0.97)', justifyContent: 'center', alignItems: 'center', zIndex: 999999, padding: 10 },
     viberMasterTabContent: { width: '100%', maxWidth: 260, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 20 },
     viberTabTitleTxt: { fontSize: 13, fontWeight: '800', color: '#0B2545', marginBottom: 8, textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#EDF2F7', paddingBottom: 6 },
     viberTabRowBtn: { width: '100%', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center' },
     viberTabCloseBtn: { marginTop: 10, width: '100%', height: 32, backgroundColor: '#EDF2F7', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
     viberTabCloseTxt: { color: '#4A5568', fontWeight: '700', fontSize: 11 },
-
     dropdownBlueTxt: { color: '#3182CE', fontSize: 12, fontWeight: '800' },
     dropdownOrangeTxt: { color: '#DD6B20', fontSize: 12, fontWeight: '800' },
     dropdownRedTxt: { color: '#E53E3E', fontSize: 12, fontWeight: '800' },
-
     inputRow: { flexDirection: 'row', padding: 8, alignItems: 'center', backgroundColor: '#F0F4F8', borderTopWidth: 1, borderColor: '#E2E8F0', zIndex: 10 },
     attachBtn: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', marginRight: 4, backgroundColor: '#E2E8F0', borderRadius: 17 },
     attachBtnTxt: { fontSize: 16 },
@@ -483,23 +453,18 @@ const styles = StyleSheet.create({
     row: { flexDirection: 'row', gap: 8, width: '100%' },
     denyBtn: { flex: 1, height: 34, backgroundColor: '#FCE8E6', borderRadius: 6, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#FAD2CF' },
     acceptBtn: { flex: 1, height: 34, backgroundColor: '#0B2545', borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-
-    // STILI I RI: Discord/Telegram style Pop-up Drawer overlay për Reaksionet, GIF & Stickers
     discordDrawerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end', zIndex: 9999999 },
     discordDrawerContent: { backgroundColor: '#0F172A', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, height: '55%', borderWidth: 1, borderColor: 'rgba(79,70,229,0.2)' },
     drawerTabRow: { flexDirection: 'row', backgroundColor: '#1E293B', borderRadius: 12, padding: 3, gap: 4 },
     drawerTabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
     drawerTabActive: { backgroundColor: '#4F46E5' },
     drawerTabTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-
     emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingVertical: 10 },
     emojiGridItem: { width: 46, height: 46, backgroundColor: '#1E293B', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
     emojiGridTxt: { fontSize: 22 },
-
     mediaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', paddingHorizontal: 4 },
-    mediaGridImage: { width: '48%', height: 110, borderRadius: 12, marginVertical: 4, backgroundColor: '#1E293B' },
-    stickerGridImage: { width: 75, height: 75, marginVertical: 6, alignSelf: 'center' },
-
+    mediaGridImageInternal: { width: '100%', height: 110, borderRadius: 12, marginVertical: 4, backgroundColor: '#1E293B' },
+    stickerGridImageInternal: { width: 75, height: 75, marginVertical: 6, alignSelf: 'center' },
     drawerCloseBtn: { height: 40, backgroundColor: '#1E293B', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 8 },
     drawerCloseTxt: { color: '#94A3B8', fontWeight: '700', fontSize: 13 }
 });

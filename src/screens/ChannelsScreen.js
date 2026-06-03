@@ -23,8 +23,6 @@ export default function ChannelsScreen() {
 
     const [isMaximized, setIsMaximized] = useState(false);
     const [chatPosition, setChatPosition] = useState({ x: 20, y: 105 });
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
     const [selectedStudentForAction, setSelectedStudentForAction] = useState(null);
 
@@ -61,6 +59,8 @@ export default function ChannelsScreen() {
             if (usersList.length > 0) {
                 filterAllSections(usersList, reqs);
             }
+        }, (error) => {
+            console.log("Gabim live stream gjatë dëgjimit të channels:", error);
         });
 
         const fetchStudents = async () => {
@@ -70,8 +70,8 @@ export default function ChannelsScreen() {
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    if (data && data.email !== user.email) {
-                        const actualId = data.uid || doc.id;
+                    const actualId = data.uid || doc.id;
+                    if (data && actualId !== user.uid && data.email !== user.email) {
                         students.push({ id: actualId, ...data, uid: actualId });
                     }
                 });
@@ -90,8 +90,7 @@ export default function ChannelsScreen() {
         return () => {
             unsubscribeRequests();
         };
-    }, [user?.uid, usersList.length]);
-
+    }, [user?.uid, usersList.length, chatRequests.length]);
     const filterAllSections = (students, currentRequests) => {
         const chats = [];
         const fresh = [];
@@ -105,7 +104,7 @@ export default function ChannelsScreen() {
             if (!studentUid || !user.uid) continue;
 
             const match = safeRequests.find(r =>
-                r.members && r.members.includes(user.uid) && r.members.includes(studentUid)
+                r.isPrivate === true && r.members && r.members.includes(user.uid) && r.members.includes(studentUid)
             );
 
             if (match) {
@@ -156,9 +155,9 @@ export default function ChannelsScreen() {
                 chatId = channelOrUser.currentRequestId;
             } else {
                 const existing = chatRequests.find(r =>
-                    r.members && r.members.includes(user.uid) && r.members.includes(targetId)
+                    r.isPrivate === true && r.members && r.members.includes(user.uid) && r.members.includes(targetId)
                 );
-                chatId = existing ? existing.id : `chat_${user.uid}_${targetId}`;
+                chatId = existing ? existing.id : `chat_${user.uid < targetId ? user.uid + '_' + targetId : targetId + '_' + user.uid}`;
             }
 
             const match = chatRequests.find(r => r.id === chatId);
@@ -188,9 +187,7 @@ export default function ChannelsScreen() {
         });
         setIsSearchModalOpen(false);
         setIsMaximized(false);
-        setChatPosition({ x: 20, y: 105 });
     };
-
     const handleClearMessagesOnly = async (targetStudent) => {
         if (!targetStudent || !targetStudent.currentRequestId) return;
         setSelectedStudentForAction(null);
@@ -256,10 +253,7 @@ export default function ChannelsScreen() {
                 <View style={{ position: 'relative', zIndex: 999999 }}>
                     <TouchableOpacity
                         style={styles.outsideThreeDotsBtn}
-                        onPress={(e) => {
-                            if (e && e.stopPropagation) e.stopPropagation();
-                            setSelectedStudentForAction(isBubbleOpen ? null : student);
-                        }}
+                        onPress={() => setSelectedStudentForAction(isBubbleOpen ? null : student)}
                     >
                         <Text style={[styles.outsideThreeDotsTxt, themeStyles.text]}>⋮</Text>
                     </TouchableOpacity>
@@ -268,28 +262,21 @@ export default function ChannelsScreen() {
                         <View style={styles.outsideInstagramBubble}>
                             <TouchableOpacity
                                 style={styles.instagramRowBtn}
-                                onPress={(e) => {
-                                    if (e && e.stopPropagation) e.stopPropagation();
-                                    handleClearMessagesOnly(selectedStudentForAction);
-                                }}
+                                onPress={() => handleClearMessagesOnly(selectedStudentForAction)}
                             >
                                 <Text style={styles.dropdownBlueTxt}>🗑️ Pastro Historikun</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={styles.instagramRowBtn}
-                                onPress={(e) => {
-                                    if (e && e.stopPropagation) e.stopPropagation();
-                                    handleDeleteChatAndName(selectedStudentForAction);
-                                }}
+                                onPress={() => handleDeleteChatAndName(selectedStudentForAction)}
                             >
                                 <Text style={styles.dropdownOrangeTxt}>❌ Fshij Bisedën</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={[styles.instagramRowBtn, { borderBottomWidth: 0 }]}
-                                onPress={(e) => {
-                                    if (e && e.stopPropagation) e.stopPropagation();
+                                onPress={() => {
                                     handleDeleteChatAndName(selectedStudentForAction);
                                     Alert.alert("U largua nga miqtë 🚫", "Lidhja e shoqërisë u fshi komplet.");
                                 }}
@@ -302,20 +289,8 @@ export default function ChannelsScreen() {
             </View>
         );
     }
-
     return (
-        <View
-            style={{ flex: 1, position: 'relative' }}
-            onMouseMove={(e) => {
-                if (isDragging && !isMaximized) {
-                    setChatPosition({
-                        x: dragStart.x - e.clientX,
-                        y: dragStart.y - e.clientY
-                    });
-                }
-            }}
-            onMouseUp={() => setIsDragging(false)}
-        >
+        <View style={{ flex: 1, position: 'relative' }}>
             <View style={styles.mainHeaderRow}>
                 <Text style={[styles.mainSectionTitle, themeStyles.text]}>🏛️ Kanalet e Fakultetit Tënd [{studentFaculty}]</Text>
             </View>
@@ -336,6 +311,7 @@ export default function ChannelsScreen() {
                 <Text style={styles.gmailFabText}>💬</Text>
                 {hasNewRequestsGlobal && <View style={styles.fabNotificationBadge} />}
             </TouchableOpacity>
+
             <Modal animationType="fade" transparent={true} visible={isSearchModalOpen} onRequestClose={() => setIsSearchModalOpen(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, themeStyles.card]}>
@@ -397,15 +373,7 @@ export default function ChannelsScreen() {
 
             {activeChatSession && (
                 <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
-                    <View
-                        style={styles.bubbleDragHeader}
-                        onMouseDown={(e) => {
-                            if (!isMaximized) {
-                                setIsDragging(true);
-                                setDragStart({ x: e.clientX + chatPosition.x, y: e.clientY + chatPosition.y });
-                            }
-                        }}
-                    >
+                    <View style={styles.bubbleDragHeader}>
                         <Text style={styles.bubbleHeaderTitle} numberOfLines={1}>💬 {activeChatSession.name}</Text>
                         <View style={styles.headerControls}>
                             <TouchableOpacity onPress={() => setIsMaximized(!isMaximized)} style={styles.controlBtn}><Text style={styles.controlBtnTxt}>{isMaximized ? '🗗' : '🗖'}</Text></TouchableOpacity>
@@ -418,7 +386,6 @@ export default function ChannelsScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: { flex: 1, paddingHorizontal: 12 },
     lightBg: { backgroundColor: '#F8FAFC' }, darkBg: { backgroundColor: '#080E1A' },
@@ -435,7 +402,6 @@ const styles = StyleSheet.create({
     gmailFabButton: { position: 'absolute', bottom: 100, right: 16, width: 52, height: 52, borderRadius: 26, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', elevation: 6, zIndex: 999, shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 8 },
     gmailFabText: { fontSize: 18 },
     fabNotificationBadge: { position: 'absolute', top: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444', borderWidth: 2, borderColor: '#FFF' },
-
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 15, zIndex: 999999 },
     modalContent: { width: '100%', maxWidth: 410, height: '65%', borderRadius: 24, padding: 18, borderWidth: 1, position: 'relative' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -452,7 +418,6 @@ const styles = StyleSheet.create({
     modalSubTabTxt: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
     miniEmptyText: { fontSize: 12, color: '#A0AEC0', paddingHorizontal: 10, fontStyle: 'italic', marginVertical: 10, textAlign: 'center' },
     searchInput: { height: 40, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, fontSize: 13 },
-
     studentSearchItemWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 4, backgroundColor: 'rgba(0,0,0,0.01)', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative' },
     studentSearchItem: { flex: 1, padding: 14 },
     studentSearchName: { fontSize: 13, fontWeight: '700' },
@@ -470,6 +435,4 @@ const styles = StyleSheet.create({
     headerControls: { flexDirection: 'row', gap: 12, alignItems: 'center' },
     controlBtn: { padding: 2 },
     controlBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' }
-
 });
-

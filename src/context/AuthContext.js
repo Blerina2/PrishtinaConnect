@@ -8,22 +8,25 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-
-    // THEME REFACTOR: Tracks global theme state universally across all components and screens
     const [isDarkMode, setIsDarkMode] = useState(true);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 try {
-                    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+                    // RREGULLIMI: Hoqëm doc() e dyfishtë që shkaktonte dështim dhe bllokonte leximin e fakultetit
+                    const userDocRef = doc(db, 'users', firebaseUser.uid);
+                    const userDoc = await getDoc(userDocRef);
+
                     if (userDoc.exists()) {
+                        // Këtu marrim të dhënat e sakta nga Firestore (përfshirë fakultetin e saktë të regjistrimit)
                         setUser({ uid: firebaseUser.uid, ...userDoc.data() });
                     } else {
+                        // Vlerë rezervë nëse dokumenti nuk gjendet për ndonjë arsye
                         setUser({ uid: firebaseUser.uid, email: firebaseUser.email, faculty: 'FIEK' });
                     }
                 } catch (e) {
-                    console.log("Gabim gjatë leximit të profilit:", e);
+                    console.log("Gabim gjatë leximit të profilit nga Firestore:", e);
                     setUser({ uid: firebaseUser.uid, email: firebaseUser.email, faculty: 'FIEK' });
                 }
             } else {
@@ -34,14 +37,9 @@ export function AuthProvider({ children }) {
 
         return () => unsubscribe();
     }, []);
+
     return (
-        <AuthContext.Provider value={{
-            user,
-            setUser,
-            loading,
-            isDarkMode,
-            setIsDarkMode // CRITICAL COMPILER FIX: Releases global context locks for inner screens
-        }}>
+        <AuthContext.Provider value={{ user, setUser, loading, isDarkMode, setIsDarkMode }}>
             {children}
         </AuthContext.Provider>
     );

@@ -61,10 +61,10 @@ export default function StudentLifeScreen() {
                     <Text style={[styles.segmentTxt, activeSubSection === 'bus' && styles.segmentTxtActive]}>🚌 Trafiku Urban</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.segmentBtn, activeSubSection === 'mensa' && styles.segmentActive]} onPress={() => setActiveSubSection('mensa')}>
-                    <Text style={[styles.segmentTxt, activeSubSection === 'mensa' && styles.segmentTxtActive]}>🏢 Menza / Dorms</Text>
+                    <Text style={[styles.segmentTxt, activeSubSection === 'mensa' && styles.segmentTxtActive]}>🏢 Menza / Konviktet</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.segmentBtn, activeSubSection === 'deals' && styles.segmentActive]} onPress={() => setActiveSubSection('deals')}>
-                    <Text style={[styles.segmentTxt, activeSubSection === 'deals' && styles.segmentTxtActive]}>🔥 Oferta</Text>
+                    <Text style={[styles.segmentTxt, activeSubSection === 'deals' && styles.segmentTxtActive]}>🔥 Oferta/Lirime </Text>
                 </TouchableOpacity>
             </ScrollView>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 110 }}>

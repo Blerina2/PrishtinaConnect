@@ -11,8 +11,7 @@ export default function ClubsScreen() {
     const [clubMessages, setClubMessages] = useState([]);
     const [newMsg, setNewMsg] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(false);
-
-    // Switcher-i kryesor i tab-eve ('all' = Katalogu, 'my_clubs' = Klubet e Mia)
+    // Tab directory controller setup ('all' = Catalog, 'my_clubs' = Enrolled Rooms)
     const [activeMainTab, setActiveMainTab] = useState('all');
 
     const [pendingRequests, setPendingRequests] = useState([]);
@@ -23,7 +22,6 @@ export default function ClubsScreen() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newClubName, setNewClubName] = useState('');
     const [newClubDesc, setNewClubDesc] = useState('');
-
     const currentStudentProfile = {
         email: user?.email || 'student@student.uni-pr.edu',
         department: user?.faculty || 'FIEK',
@@ -43,7 +41,6 @@ export default function ClubsScreen() {
 
     const myManagedClubs = clubs.filter(c => c.presidentUid === currentStudentProfile.uid);
     const isAPresident = myManagedClubs.length > 0;
-    // DËGJUESI LIVE: Ngarkon klubet e krijuara nga studentët në kohë reale
     useEffect(() => {
         const qCustomClubs = query(collection(db, 'custom_clubs'), orderBy('createdAt', 'desc'));
         const unsubscribeClubs = onSnapshot(qCustomClubs, (snapshot) => {
@@ -64,8 +61,6 @@ export default function ClubsScreen() {
         });
         return () => unsubscribeClubs();
     }, []);
-
-    // DËGJUESI LIVE: Monitoron kërkesat e pranuara nga Presidentët për këtë student
     useEffect(() => {
         if (!currentStudentProfile.uid) return;
         const qLogs = query(
@@ -87,7 +82,6 @@ export default function ClubsScreen() {
         return () => unsubscribeLogs();
     }, [currentStudentProfile.uid]);
 
-    // DËGJUESI LIVE: Për kërkesat hyrëse që i vijnë këtë përdoruesi nëse është President
     useEffect(() => {
         if (!currentStudentProfile.uid || myManagedClubs.length === 0) return;
         const managedClubIds = myManagedClubs.map(c => c.id);
@@ -104,7 +98,21 @@ export default function ClubsScreen() {
         return () => unsubscribeRequests();
     }, [currentStudentProfile.uid, clubs.length]);
 
-    // FUNKSIONI: Krijon një klub të ri në Firestore
+    useEffect(() => {
+        if (!activeClub?.id) return;
+        setLoadingMessages(true);
+        const q = query(collection(db, 'clubs', activeClub.id, 'messages'), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const msgs = [];
+            snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+            setClubMessages(msgs);
+            setLoadingMessages(false);
+        }, (err) => {
+            console.log("Error loading club messages:", err);
+            setLoadingMessages(false);
+        });
+        return () => unsubscribe();
+    }, [activeClub?.id]);
     const handleCreateClub = async () => {
         if (!newClubName.trim() || !newClubDesc.trim()) {
             Alert.alert('Gabim', 'Ju lutem plotësoni emrin dhe përshkrimin e klubit.');
@@ -172,6 +180,7 @@ export default function ClubsScreen() {
             }
         } catch (e) { console.error(e); }
     };
+
     const handleSendClubMessage = async () => {
         if (!newMsg.trim() || !activeClub) return;
         const currentText = newMsg.trim();
@@ -188,14 +197,6 @@ export default function ClubsScreen() {
             console.log("Gabim gjatë dërgimit në klub:", e);
         }
     };
-
-    const themeStyles = {
-        card: isDarkMode ? styles.darkCard : styles.lightCard,
-        text: isDarkMode ? styles.darkText : styles.lightText,
-        input: isDarkMode ? styles.darkInput : styles.lightInput,
-    };
-
-    // LOGJIKA E KORRIGJUAR E FILTRIMIT: Ndarja e rreptë e dhomave pa përsëritje
     const filteredClubsByTab = clubs.filter(item => {
         const isPresidentOfThis = item.presidentUid === currentStudentProfile.uid;
         const hasAccess = item.allowedDept === 'ALL' ||
@@ -204,12 +205,17 @@ export default function ClubsScreen() {
             myApprovedClubIds.includes(item.id);
 
         if (activeMainTab === 'my_clubs') {
-            return hasAccess; // Tab "Klubet e Mia": Shfaq vetëm ato ku përdoruesi KA qasje
+            return hasAccess;
         } else {
-            return !hasAccess; // Tab "Katalogu": Shfaq vetëm dhomat e huaja ku përdoruesi NUK ka qasje ende
+            return !hasAccess;
         }
     });
 
+    const themeStyles = {
+        card: isDarkMode ? styles.darkCard : styles.lightCard,
+        text: isDarkMode ? styles.darkText : styles.lightText,
+        input: isDarkMode ? styles.darkInput : styles.lightInput,
+    };
     if (activeClub) {
         return (
             <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -229,10 +235,14 @@ export default function ClubsScreen() {
                         data={clubMessages}
                         keyExtractor={(item) => item.id}
                         inverted
-                        renderItem={({ item }) => {
-                            const isMe = item.uid === currentStudentProfile.uid;
-                            return <MessageBubble text={item.text} email={item.email} isMe={isMe} messageId={item.id} />;
-                        }}
+                        renderItem={({ item }) => (
+                            <MessageBubble
+                                text={item.text}
+                                email={item.email}
+                                isMe={item.uid === currentStudentProfile.uid}
+                                messageId={item.id}
+                            />
+                        )}
                     />
                 )}
 
@@ -255,7 +265,6 @@ export default function ClubsScreen() {
             </KeyboardAvoidingView>
         );
     }
-
     return (
         <View style={[styles.container, isDarkMode ? styles.darkBg : styles.lightBg]}>
 
@@ -300,7 +309,9 @@ export default function ClubsScreen() {
                                 pendingRequests.map(req => (
                                     <View key={req.id} style={styles.requestItemRow}>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={styles.requestUserTxt} numberOfLines={1}>👤 {req.studentEmail.split('@')}</Text>
+                                            <Text style={styles.requestUserTxt} numberOfLines={1}>
+                                                👤 {req.studentEmail ? req.studentEmail.split('@')[0] : 'Student'}
+                                            </Text>
                                             <Text style={styles.requestMetaTxt}>Klubi: {req.clubName} • Fakulteti: {req.studentFaculty}</Text>
                                         </View>
                                         <View style={styles.requestActionBtnRow}>
@@ -318,7 +329,6 @@ export default function ClubsScreen() {
                     )}
                 </View>
             )}
-
             {/* HEADER CONTROLS WITH REVOLUTIONARY CREATION ACTIONS */}
             <View style={styles.clubsHeaderControlRow}>
                 <Text style={[styles.title, themeStyles.text, { marginVertical: 0 }]}>Klubet e Universitetit</Text>
@@ -327,7 +337,7 @@ export default function ClubsScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* Rrjeti i Ndërrimit të Tab-eve (Katalogu vs Klubet e Mia) */}
+            {/* Segmented Tab Row Switcher (Catalog vs My Clubs) */}
             <View style={styles.mainTabNavigationRow}>
                 <TouchableOpacity
                     style={[styles.mainTabBtnItem, activeMainTab === 'all' && styles.mainTabActiveNode]}
@@ -342,13 +352,13 @@ export default function ClubsScreen() {
                     <Text style={[styles.mainTabBtnTxt, activeMainTab === 'my_clubs' && styles.mainTabBtnTxtActive]}>⭐ Klubet e Mia</Text>
                 </TouchableOpacity>
             </View>
-            {/* SEGMENTED DIRECTORY TIMELINE FEED */}
+
+            {/* SEGMENTED DIRECTORY TIMELINE FEED LABEL */}
             <View style={styles.internalTabContainerRow}>
                 <Text style={[styles.subSectionHeaderTitle, themeStyles.text]}>
                     {activeMainTab === 'all' ? '📋 Katalogu i hapshëm (Klubet e huaja):' : '⭐ Dhomat tuaja me qasje të plotë:'}
                 </Text>
             </View>
-
             <FlatList
                 data={filteredClubsByTab}
                 keyExtractor={(item) => item.id}
@@ -402,7 +412,6 @@ export default function ClubsScreen() {
                     );
                 }}
             />
-
             {/* CREATION OVERLAY WORKFLOW PORTAL FORM */}
             <Modal animationType="slide" transparent={true} visible={isCreateModalOpen} onRequestClose={() => setIsCreateModalOpen(false)}>
                 <View style={styles.creationModalOverlay}>
@@ -447,29 +456,23 @@ export default function ClubsScreen() {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 14, paddingBottom: 85, position: 'relative', zIndex: 10 },
     lightBg: { backgroundColor: '#F0F4F8' }, darkBg: { backgroundColor: '#080E1A' },
     lightCard: { backgroundColor: '#ffffff', borderColor: '#F0F4F8' }, darkCard: { backgroundColor: '#0F172A', borderColor: 'rgba(79, 70, 229, 0.2)' },
     lightText: { color: '#0B2545' }, darkText: { color: '#FFFFFF' },
-
     title: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
     clubsHeaderControlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 6, width: '100%' },
     createNewClubTriggerBtn: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1.2, borderColor: '#10B981', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12 },
     createNewClubTriggerTxt: { color: '#10B981', fontSize: 12, fontWeight: '800' },
-
-    // DUAL TAB LAYOUT CONTROLLER HUB ARCHITECTURE
     mainTabNavigationRow: { flexDirection: 'row', backgroundColor: '#1E293B', padding: 4, borderRadius: 16, marginVertical: 12, gap: 4 },
     mainTabBtnItem: { flex: 1, paddingVertical: 11, alignItems: 'center', borderRadius: 12 },
     mainTabActiveNode: { backgroundColor: '#4F46E5' },
     mainTabBtnTxt: { color: '#94A3B8', fontSize: 12, fontWeight: '700' },
     mainTabBtnTxtActive: { color: '#FFFFFF', fontWeight: '800' },
-
     internalTabContainerRow: { marginVertical: 4, width: '100%' },
     subSectionHeaderTitle: { fontSize: 11, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
     miniEmptyText: { fontSize: 13, color: '#64748B', paddingHorizontal: 24, fontStyle: 'italic', marginVertical: 35, textAlign: 'center', fontWeight: '500', lineHeight: 20 },
-
     clubCard: { padding: 16, borderRadius: 24, marginVertical: 8, shadowColor: '#000', shadowOpacity: 0.02, elevation: 3, borderWidth: 1 },
     cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     iconCircle: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
@@ -480,18 +483,15 @@ const styles = StyleSheet.create({
     clubDesc: { fontSize: 13, lineHeight: 19, marginBottom: 16, fontWeight: '500' },
     joinButton: { backgroundColor: '#4F46E5', height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6 },
     joinButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
-
     clubHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#0F172A', borderBottomWidth: 2, borderBottomColor: '#4F46E5', marginHorizontal: -14, marginTop: -14, marginBottom: 10 },
     backButton: { marginRight: 15, backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
     backButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
     clubHeaderTitle: { fontSize: 15, fontWeight: '800', color: '#ffffff', flex: 1 },
-
     inputContainer: { padding: 12, backgroundColor: '#0F172A', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', marginHorizontal: -14, marginBottom: 12, zIndex: 9999999 },
     inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E293B', borderRadius: 24, paddingHorizontal: 6, paddingVertical: 4 },
     chatInput: { flex: 1, height: 40, paddingHorizontal: 14, color: '#FFFFFF', fontSize: 14 },
     sendButton: { width: 36, height: 36, backgroundColor: '#4F46E5', borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
     sendButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
-
     presidentBadgeContainer: { width: '100%', marginBottom: 10 },
     presidentControlToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#D97706', padding: 14, borderRadius: 16 },
     presidentToggleTxt: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
@@ -507,13 +507,10 @@ const styles = StyleSheet.create({
     actionApproveBtn: { backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
     actionRejectBtn: { backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
     actionBtnTxt: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-
     alertsContainerSection: { width: '100%', marginBottom: 10, backgroundColor: 'rgba(16,185,129,0.04)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.15)', padding: 12, borderRadius: 18 },
-    alertsHeaderTitle: { fontSize: 12, fontWeight: '800', color: '#10B981', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },
+    alertsHeaderTitle: { fontSize: 12, fontWeight: '800', color: '#10B981', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
     alertSuccessBubbleItem: { paddingVertical: 4 },
-    alertSuccessTxt: { color: '#A7F3D0', fontSize: 12, fontWeight: '500', lineHeight: 17 },
-
-    // CREATION WORKFLOW FORM OVERLAY CSS
+    alertSuccessTxt: { color: '#10B981', fontSize: 12, fontWeight: '500', lineHeight: 17 },
     creationModalOverlay: { flex: 1, backgroundColor: 'rgba(8,14,26,0.85)', justifyContent: 'center', alignItems: 'center', padding: 15 },
     creationModalContent: { width: '100%', maxWidth: 400, borderRadius: 28, padding: 22, borderWidth: 1 },
     modalMainTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3, marginBottom: 6 },
