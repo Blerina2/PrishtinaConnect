@@ -8,21 +8,35 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isDarkMode, setIsDarkMode] = useState(true);
+
+    // RREGULLIMI I RI: Lexojmë temën direkt nga localStorage e Chrome në mënyrë sinkrone për të shmangur ekranin e bardhë
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            const savedTheme = window.localStorage.getItem('@PrishtinaConnect:theme');
+            // Nëse nuk ka temë të ruajtur, vendoset Tema e Errët (true) si vlerë fillestare
+            return savedTheme !== null ? JSON.parse(savedTheme) : true;
+        }
+        return true; // Fallback për mjedise të tjera
+    });
+
+    // Funksion i ri që ruan temën në Chrome sa herë që studenti e ndryshon atë te Settings
+    const ndryshoTemenGlobalisht = (vleratERe) => {
+        setIsDarkMode(vleratERe);
+        if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem('@PrishtinaConnect:theme', JSON.stringify(vleratERe));
+        }
+    };
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 try {
-                    // RREGULLIMI: Hoqëm doc() e dyfishtë që shkaktonte dështim dhe bllokonte leximin e fakultetit
                     const userDocRef = doc(db, 'users', firebaseUser.uid);
                     const userDoc = await getDoc(userDocRef);
 
                     if (userDoc.exists()) {
-                        // Këtu marrim të dhënat e sakta nga Firestore (përfshirë fakultetin e saktë të regjistrimit)
                         setUser({ uid: firebaseUser.uid, ...userDoc.data() });
                     } else {
-                        // Vlerë rezervë nëse dokumenti nuk gjendet për ndonjë arsye
                         setUser({ uid: firebaseUser.uid, email: firebaseUser.email, faculty: 'FIEK' });
                     }
                 } catch (e) {
@@ -39,7 +53,8 @@ export function AuthProvider({ children }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, setUser, loading, isDarkMode, setIsDarkMode }}>
+
+        <AuthContext.Provider value={{ user, setUser, loading, isDarkMode, setIsDarkMode: ndryshoTemenGlobalisht }}>
             {children}
         </AuthContext.Provider>
     );

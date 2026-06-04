@@ -166,26 +166,38 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     };
 
     const handlePickDocument = async () => {
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-                copyToCacheDirectory: true
-            });
+        // Web compatible link attachment channel using browser native prompt
+        if (typeof window !== 'undefined' && window.prompt) {
+            const linkUrlInput = window.prompt("Shkruani ose ngjitni (Paste) linkun e materialit tuaj (p.sh. Google Drive, Imgur, OneDrive):");
 
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                const pickedFile = result.assets[0];
+            if (!linkUrlInput || !linkUrlInput.trim()) return;
+
+            const cleanLink = linkUrlInput.trim();
+            if (!cleanLink.toLowerCase().startsWith('http')) {
+                alert("Gabim: Linku duhet të fillojë me http:// ose https://");
+                return;
+            }
+
+            try {
+                // Evaluates if the shared asset looks like a direct link to a document or photo
+                const isImage = cleanLink.match(/\.(jpeg|jpg|gif|png)$/) != null;
+
                 await addDoc(collection(db, 'channels', selectedChannel.id, 'messages'), {
-                    fileUri: pickedFile.uri,
-                    fileName: pickedFile.name,
+                    text: `🔗 Burim i Bashkëngjitur: ${cleanLink}`,
+                    // If it is an image link, your MessageBubble will render it inside the media box automatically!
+                    imageUri: isImage ? cleanLink : null,
+                    fileUri: !isImage ? cleanLink : null,
+                    fileName: !isImage ? "Dokument i Jashtëm (Kliko për ta hapur)" : null,
                     createdAt: new Date().toISOString(),
                     uid: user.uid,
                     email: user.email || 'student@uni-pr.edu'
                 });
+            } catch (e) {
+                console.log("Gabim gjatë dërgimit të linkut në chat:", e);
             }
-        } catch (e) {
-            console.log("Gabim gjatë zgjedhjes së dokumentit:", e);
         }
     };
+
 
     const handleSendGif = async (url) => {
         if (!selectedChannel?.id) return;

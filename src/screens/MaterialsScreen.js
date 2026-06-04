@@ -74,55 +74,46 @@ export default function MaterialsScreen() {
     useEffect(() => { if (studentFaculty) { loadMaterials(); } }, [studentFaculty]);
     const handleUploadMaterial = async () => {
         if (!title.trim()) {
-            Alert.alert("Gabim", "Ju lutem shkruani një titull ose përshkrim.");
+            alert("Gabim: Ju lutem shkruani një titull ose përshkrim për materialin.");
             return;
         }
 
-        if (selectedType === 'Drive 📁' && !linkUrl.trim()) {
-            Alert.alert("Gabim", "Ju lutem plotësoni linkun e Google Drive.");
-            return;
-        }
-
-        if (selectedType !== 'Drive 📁' && !localFileUri) {
-            Alert.alert("Gabim", "Ju lutem përzgjidhni një skedar ose foto nga pajisja.");
+        if (!linkUrl.trim() || !linkUrl.toLowerCase().startsWith('http')) {
+            alert("Gabim: Ju lutem plotësoni një link valid të Google Drive ose OneDrive (https://...)");
             return;
         }
 
         setSubmitting(true);
         try {
-            let finalUrl = null;
-
-            if (selectedType !== 'Drive 📁' && localFileUri) {
-                finalUrl = await uploadFileToCloud(localFileUri, 'materials_vault');
-            } else {
-                finalUrl = linkUrl.trim();
-            }
-
+            // We completely bypass uploadFileToCloud and store the dynamic link directly in Firestore
             const matObj = {
                 title: title.trim(),
-                type: selectedType,
+                type: 'Drive 📁', // Enforces the Drive visual template
                 faculty: studentFaculty,
-                uploadedBy: user?.email ? user.email.split('@') : 'Student',
+                uploadedBy: user?.email ? user.email.split('@')[0] : 'Student',
                 createdAt: new Date().toISOString(),
-                linkUrl: finalUrl,
-                fileName: selectedType !== 'Drive 📁' ? localFileName : null
+                linkUrl: linkUrl.trim(),
+                fileName: "Google Drive Resource"
             };
 
             await addDoc(collection(db, 'materials'), matObj);
+
+            // Clear operational inputs immediately
             setTitle('');
             setLinkUrl('');
             setLocalFileUri(null);
             setLocalFileName('');
 
             await loadMaterials();
-            Alert.alert("Sukses 🎉", "Materiali u ngarkua në serverin Cloud me sukses!");
+            alert("Sukses 🎉 Burimi akademik u shpërnda me sukses në rrjet!");
         } catch (err) {
             console.error(err);
-            Alert.alert("Gabim", "Ndodhi një problem gjatë ngarkimit në Cloud.");
+            alert("Gabim: Ndodhi një problem gjatë dërgimit të linkut në Firestore.");
         } finally {
             setSubmitting(false);
         }
     };
+
 
     const handleOpenMaterial = (item) => {
         if (item.linkUrl) {

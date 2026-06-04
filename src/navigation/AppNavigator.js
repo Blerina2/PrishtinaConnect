@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -15,11 +14,30 @@ import StudentLifeScreen from '../screens/StudentLifeScreen';
 
 export default function AppNavigator() {
     const { user, setUser, loading, isDarkMode } = useAuth();
-    const [currentTab, setCurrentTab] = useState('channels');
 
-    // Funksioni për çkyçje të plotë nga aplikacioni
+    // RREGULLIMI: Lexojmë tab-in e fundit të mbetur direkt nga localStorage e Chrome për të parandaluar resetimin
+    const [currentTab, setCurrentTab] = useState(() => {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            const savedTab = window.localStorage.getItem('@PrishtinaConnect:currentTab');
+            return savedTab !== null ? savedTab : 'channels';
+        }
+        return 'channels';
+    });
+
+    // Funksion i ri inteligjent që ndërron tab-in dhe e ruan atë automatikisht në memorien e browser-it
+    const ndryshoTabinDheRuaj = (tabId) => {
+        setCurrentTab(tabId);
+        if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem('@PrishtinaConnect:currentTab', tabId);
+        }
+    };
+
+    // Funksioni për çkyçje të plotë nga aplikacioni (Pastrojmë edhe memorien e navigimit)
     const handleLogout = async () => {
         try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.removeItem('@PrishtinaConnect:currentTab');
+            }
             setCurrentTab('channels');
             await auth.signOut();
             setUser(null);
@@ -46,9 +64,6 @@ export default function AppNavigator() {
     }
 
     const containerStyle = isDarkMode ? styles.darkContainer : styles.lightContainer;
-// ==========================================
-// AppNavigator.js - PJESA 2: PAMJA KRYESORE DHE STILET
-// ==========================================
     return (
         <View style={[styles.container, containerStyle]}>
             {/* CONTAINER FOR CORE CONTENT MOUNTING */}
@@ -64,7 +79,6 @@ export default function AppNavigator() {
                 ) : currentTab === 'lifestyle' ? (
                     <StudentLifeScreen />
                 ) : (
-                    // FIX: Këtu i kalojmë prop-et e plota në mënyrë që profili të punojë saktë
                     <ProfileScreen user={user} onLogout={handleLogout} />
                 )}
             </View>
@@ -72,32 +86,33 @@ export default function AppNavigator() {
             {/* INTEGRATED FLOATING BOTTOM TAB BAR WITH 6 DIRECTORIES */}
             <View style={styles.tabBarContainer}>
                 <View style={[styles.floatingTabBar, isDarkMode && styles.darkTabBar]}>
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'channels' && styles.activeTab]} onPress={() => setCurrentTab('channels')}>
+
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'channels' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('channels')}>
                         <Text style={styles.tabIcon}>💬</Text>
                         <Text style={[styles.tabText, currentTab === 'channels' && styles.activeTabText]}>Chat</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'materials' && styles.activeTab]} onPress={() => setCurrentTab('materials')}>
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'materials' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('materials')}>
                         <Text style={styles.tabIcon}>📁</Text>
                         <Text style={[styles.tabText, currentTab === 'materials' && styles.activeTabText]}>Material</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'news' && styles.activeTab]} onPress={() => setCurrentTab('news')}>
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'news' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('news')}>
                         <Text style={styles.tabIcon}>📢</Text>
                         <Text style={[styles.tabText, currentTab === 'news' && styles.activeTabText]}>Lajme</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'clubs' && styles.activeTab]} onPress={() => setCurrentTab('clubs')}>
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'clubs' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('clubs')}>
                         <Text style={styles.tabIcon}>🚀</Text>
                         <Text style={[styles.tabText, currentTab === 'clubs' && styles.activeTabText]}>Klube</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'lifestyle' && styles.activeTab]} onPress={() => setCurrentTab('lifestyle')}>
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'lifestyle' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('lifestyle')}>
                         <Text style={styles.tabIcon}>✨</Text>
                         <Text style={[styles.tabText, currentTab === 'lifestyle' && styles.activeTabText]}>Jeta</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.tabItem, currentTab === 'profile' && styles.activeTab]} onPress={() => setCurrentTab('profile')}>
+                    <TouchableOpacity style={[styles.tabItem, currentTab === 'profile' && styles.activeTab]} onPress={() => ndryshoTabinDheRuaj('profile')}>
                         <Text style={styles.tabIcon}>👤</Text>
                         <Text style={[styles.tabText, currentTab === 'profile' && styles.activeTabText]}>Profil</Text>
                     </TouchableOpacity>
@@ -113,7 +128,7 @@ const styles = StyleSheet.create({
     darkContainer: { backgroundColor: '#080E1A' },
     mainContent: { flex: 1 },
     loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    tabBarContainer: { position: 'absolute', bottom: 15, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+    tabBarContainer: { position: 'absolute', bottom: 15, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, zIndex: 9999 },
     floatingTabBar: { flexDirection: 'row', backgroundColor: '#0F172A', width: '100%', maxWidth: 520, height: 66, borderRadius: 33, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'space-around', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 12, borderWidth: 1, borderColor: 'rgba(79, 70, 229, 0.2)' },
     darkTabBar: { backgroundColor: '#0F172A', shadowColor: '#000', borderColor: 'rgba(79, 70, 229, 0.3)' },
     tabItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: 4, borderRadius: 20, flex: 1 },

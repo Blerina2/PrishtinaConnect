@@ -107,11 +107,12 @@ export default function ProfileScreen({ user, onLogout }) {
                     };
 
                     // Ndarja e postimeve bëhet në memorien lokale të telefonit pa bllokuar Firebase
-                    if (data.uid === directAuthenticatedUid) {
+                    if (data.uid && String(data.uid).trim() === String(directAuthenticatedUid).trim()) {
                         mine.push(unifiedPostObj);
                     } else {
                         others.push(unifiedPostObj);
                     }
+
                 }
             });
 
@@ -186,11 +187,13 @@ export default function ProfileScreen({ user, onLogout }) {
             Alert.alert("Gabim", "Ju lutem shkruani diçka ose zgjedhni një foto.");
             return;
         }
+
         const directAuthenticatedUid = auth.currentUser?.uid;
         if (!directAuthenticatedUid) {
-            Alert.alert("Gabim", "Seanca juaj ka skaduar.");
+            Alert.alert("Gabim", "Seanca juaj ka skaduar. Kyçuni përsëri.");
             return;
         }
+
         setUploading(true);
         try {
             let finalCloudMediaUrl = null;
@@ -198,19 +201,21 @@ export default function ProfileScreen({ user, onLogout }) {
                 finalCloudMediaUrl = await uploadFileToCloud(postImage, 'posts_media');
             }
 
+            // RREGULLIMI: Dërgimi i pastër i të dhënave të autorit dhe UID
             await addDoc(collection(db, 'posts'), {
                 content: postText.trim(),
                 postImgUri: finalCloudMediaUrl,
                 createdAt: new Date().toISOString(),
-                uid: directAuthenticatedUid,
-                author: rawPrefix,
+                uid: String(directAuthenticatedUid), // Sigurohemi që është String i pastër
+                author: String(rawPrefix),
                 faculty: studentFaculty,
                 likes: [],
                 comments: []
             });
+
             setPostText('');
             setPostImage(null);
-            Alert.alert("Sukses 🎉", "Postimi juaj u publikua me sukses në platformë!");
+            Alert.alert("Sukses 🎉", "Postimi juaj u publikua me sukses!");
         } catch (e) {
             console.log("Gabim kritik gjatë postimit:", e);
             Alert.alert("Gabim", "Postimi dështoi.");
@@ -220,32 +225,41 @@ export default function ProfileScreen({ user, onLogout }) {
     };
 
     const handleUpdateProfileSettings = async () => {
-        if (!backupEmail.trim()) {
-            Alert.alert("Gabim", "Email-i i rikuperimit nuk mund të jetë i zbrazët.");
-            return;
-        }
         const directAuthenticatedUid = auth.currentUser?.uid;
         if (!directAuthenticatedUid) {
-            Alert.alert("Gabim", "Seanca juaj ka skaduar.");
+            if (typeof window !== 'undefined') alert("Gabim: Seanca juaj ka skaduar.");
+            else Alert.alert("Gabim", "Seanca juaj ka skaduar.");
             return;
         }
 
         setUploading(true);
         try {
             const userDocRef = doc(db, 'users', directAuthenticatedUid);
+
+            // Ndërtojmë payload-in duke marrë Bio-n e re të shkruar
             const dataPayload = {
-                bio: inputBio.trim(),
-                backupEmail: backupEmail.trim()
+                bio: inputBio ? inputBio.trim() : ''
             };
 
+            // RREGULLIMI: Nëse studenti ka shkruar diçka te email-i i rikuperimit, e ruajmë. Nëse jo, e anashkalojmë dhe nuk e bllokojmë procesin!
+            if (backupEmail && backupEmail.trim()) {
+                dataPayload.backupEmail = backupEmail.trim();
+            }
+
+            // Ruajtja fleksibile në Firebase Firestore (përditëson vetëm atë që ndryshon pa fshirë të tjerat)
             await setDoc(userDocRef, dataPayload, { merge: true });
 
-            setBioText(inputBio.trim());
-            setUser(prev => ({ ...prev, ...dataPayload }));
+            // Përditësojmë tekstin e profilit në ekran menjëherë
+            setBioText(inputBio ? inputBio.trim() : '');
 
-            if (newPass.trim()) {
-                if (newPass.length < 6) {
-                    Alert.alert("Gabim", "Fjalëkalimi i ri duhet të jetë së paku 6 karaktere.");
+            if (setUser) {
+                setUser(prev => ({ ...prev, ...dataPayload }));
+            }
+
+            // Ndryshimi i fjalëkalimit (vetëm nëse është shkruar një fjalëkalim i ri)
+            if (newPass && newPass.trim()) {
+                if (newPass.trim().length < 6) {
+                    if (typeof window !== 'undefined') alert("Fjalëkalimi duhet të jetë së paku 6 karaktere.");
                     setUploading(false);
                     return;
                 }
@@ -256,39 +270,59 @@ export default function ProfileScreen({ user, onLogout }) {
                 }
             }
 
-            Alert.alert("Sukses 🎉", "Biografia dhe cilësimet tuaja u ruajtën me sukses!");
+            // Njoftimi i suksesit për Google Chrome apo Celular
+            if (typeof window !== 'undefined') {
+                alert("Sukses 🎉 Biografia juaj u përditësua me sukses!");
+            } else {
+                Alert.alert("Sukses 🎉", "Biografia juaj u përditësua me sukses!");
+            }
+
             setIsSettingsOpen(false);
         } catch (err) {
-            console.error("Settings submission crash:", err);
-            Alert.alert("Gabim", "Ruajtja e biografisë dështoi.");
+            console.error("Gabim kritik gjatë ruajtjes së profilit:", err);
+            if (typeof window !== 'undefined') alert("Gabim: Përditësimi i biografisë dështoi.");
+            else Alert.alert("Gabim", "Përditësimi i biografisë dështoi.");
         } finally {
             setUploading(false);
         }
     };
 
+
+// 2. FUNKSIONI I RREGULLUAR PËR FSHIRJEN E POSTIMIT
     const handleDeletePost = async (postId) => {
         if (!postId) return;
-        Alert.alert(
-            "Fshij Postimin 🗑️",
-            "A jeni i sigurt që dëshironi ta fshini përgjithmonë këtë postim?",
-            [
-                { text: "Anulo", style: "cancel" },
-                {
-                    text: "Fshij",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await deleteDoc(doc(db, 'posts', postId));
-                            Alert.alert("Sukses 🎉", "Postimi u fshi.");
-                        } catch (e) {
-                            console.log("Delete error details:", e);
-                            Alert.alert("Gabim", "Fshirja dështoi.");
-                        }
-                    }
-                }
-            ]
-        );
+
+        // Logjikë ekzekutimi e përshtatur posaçërisht për Google Chrome Web Browser
+        const ekzekutoFshirjen = async () => {
+            try {
+                await deleteDoc(doc(db, 'posts', String(postId).trim()));
+                alert("Sukses 🎉 Postimi u fshi."); // Përdorim alert të thjeshtë për Web
+            } catch (e) {
+                console.log("Gabim gjatë fshirjes në Firebase:", e);
+                alert("Gabim! Fshirja dështoi. Kontrolloni rregullat në Firebase.");
+            }
+        };
+
+        // KONTROLLI I PLATFORMËS: Nëse jemi në Web (Chrome), përdorim window.confirm të browser-it
+        if (typeof window !== 'undefined' && window.confirm) {
+            const konfirmimiWeb = window.confirm("A jeni i sigurt që dëshironi ta fshini përgjithmonë këtë postim?");
+            if (konfirmimiWeb) {
+                await ekzekutoFshirjen();
+            }
+        } else {
+            // Fallback tradicional për telefon nëse kodi kthehet në emulator/celular
+            Alert.alert(
+                "Fshij Postimin 🗑️",
+                "A jeni i sigurt që dëshironi ta fshini përgjithmonë këtë postim?",
+                [
+                    { text: "Anulo", style: "cancel" },
+                    { text: "Fshij", style: "destructive", onPress: ekzekutoFshirjen }
+                ]
+            );
+        }
     };
+
+
 
     const handleLikePost = async (postId, currentLikes = []) => {
         const postRef = doc(db, 'posts', postId);
@@ -414,11 +448,10 @@ export default function ProfileScreen({ user, onLogout }) {
                             <Text style={styles.emailBadgeBubbleTxt} numberOfLines={1}>📧 {studentEmail}</Text>
                         </View>
                     </View>
-
                     {/* DEDICATED BIOGRAPHY FIELD ENTRY SECTION BELOW THE BADGES */}
                     <View style={styles.biographyTextContainerBlock}>
                         <Text style={[styles.biographyTextNodeDisplay, themeStyles.text]}>
-                            {bioText.trim() ? bioText : "Nuk ka biografi të shkruar ende. Kliko cilësimet për ta shtuar! ✨"}
+                            {bioText && bioText.trim() ? bioText : "Nuk ka biografi të shkruar ende. Kliko cilësimet për ta shtuar! ✨"}
                         </Text>
                     </View>
 
@@ -653,7 +686,6 @@ export default function ProfileScreen({ user, onLogout }) {
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     profileContainer: { flexGrow: 1, padding: 14, alignItems: 'center', width: '100%' },
     lightBg: { backgroundColor: '#F0F4F8' },
@@ -676,18 +708,13 @@ const styles = StyleSheet.create({
     cameraIcon: { fontSize: 10 },
     profileName: { fontSize: 16, fontWeight: '900', marginTop: 8 },
     emailText: { fontSize: 12, color: '#64748B', marginTop: 3, fontWeight: '600' },
-
-    // SIDE-BY-SIDE BUBBLE BADGE SPECIFICATIONS
     bubbleBadgesInlineRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap', width: '100%' },
     facultyBadgeBubble: { backgroundColor: 'rgba(79, 70, 229, 0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(79, 70, 229, 0.2)' },
     facultyBadgeBubbleTxt: { color: '#818CF8', fontSize: 11, fontWeight: '800' },
     emailBadgeBubble: { backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.2)', maxWidth: '65%' },
     emailBadgeBubbleTxt: { color: '#10B981', fontSize: 11, fontWeight: '800' },
-
-    // BIOGRAPHY LAYOUT VIEWS
     biographyTextContainerBlock: { width: '100%', paddingHorizontal: 16, marginTop: 12, alignItems: 'center' },
     biographyTextNodeDisplay: { fontSize: 13, lineHeight: 19, fontWeight: '500', fontStyle: 'italic', color: '#64748B', textAlign: 'center' },
-
     settingsLauncherBtn: { marginTop: 14, backgroundColor: 'rgba(79, 70, 229, 0.1)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12 },
     settingsLauncherTxt: { color: '#818CF8', fontSize: 11, fontWeight: '800' },
     subTabRow: { flexDirection: 'row', width: '100%', marginVertical: 12, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 4 },
@@ -697,29 +724,34 @@ const styles = StyleSheet.create({
     subTabTextActive: { color: '#FFFFFF', fontWeight: '800' },
     newPostBox: { width: '100%', padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
     postInput: { width: '100%', minHeight: 46, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingTop: 8, fontSize: 13, textAlignVertical: 'top' },
-
-    // IMAGE PREVIEW CANVAS EQUIPPED WITH TOP-RIGHT CANCEL [X] BADGE
     previewImageRelativeWrapper: { width: '100%', height: 160, marginTop: 8, position: 'relative', borderRadius: 12, overflow: 'hidden' },
     previewPostImage: { width: '100%', height: '100%' },
     cancelSelectedImageBtn: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(15, 23, 42, 0.85)', width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
     cancelSelectedImageTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-
     postActionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'center' },
     addPhotoBtn: { backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
     addPhotoBtnText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
     submitPostBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
     submitPostBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
     emptyFeedTextNode: { textAlign: 'center', color: '#94A3B8', marginVertical: 30, fontSize: 13, fontStyle: 'italic' },
-    feedCard: { width: '100%', padding: 14, borderRadius: 16, marginVertical: 6, borderWidth: 1 },
+
+    // RREGULLIMI KRYESOR: feedCard tani pozicionohet mbi shtresat e modaleve kur nuk janë aktive
+    feedCard: {
+        width: '100%',
+        padding: 14,
+        borderRadius: 16,
+        marginVertical: 6,
+        borderWidth: 1,
+        zIndex: 10,
+        elevation: 3
+    },
+
     feedContent: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
     myPostFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.03)', paddingTop: 8 },
     likesCountText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
     feedDate: { fontSize: 10, color: '#94A3B8' },
-
-    // TIMELINE DIRECT DELETION BUTTON bluePRINT
     deletePostInlineBtn: { backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 0.5, borderColor: '#FEE2E2' },
     deletePostInlineTxt: { color: '#EF4444', fontSize: 10, fontWeight: '800' },
-
     feedImage: { width: '100%', height: 180, borderRadius: 12, marginTop: 8 },
     discoverFeedCard: { width: '100%', padding: 14, borderRadius: 20, marginVertical: 6, borderWidth: 1, elevation: 1 },
     cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
@@ -742,8 +774,8 @@ const styles = StyleSheet.create({
     commentField: { flex: 1, height: 34, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, fontSize: 12 },
     commentSubmitBtn: { width: 34, height: 34, backgroundColor: '#10B981', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
 
-    // OVERLAY MANAGEMENT PANELS BluePRINTS
-    settingsModalScrollWrapper: { flexGrow: 1, backgroundColor: 'rgba(8, 14, 26, 0.7)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+    // RREGULLIMI: Modali dhe dritaret lundruese u kaluan në parametra të pastër pa zënë ekranin kur nuk përdoren
+    settingsModalScrollWrapper: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
     settingsModalContent: { width: '100%', maxWidth: 380, borderRadius: 24, padding: 20, borderWidth: 1, elevation: 12 },
     settingsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     settingsTitleMain: { fontSize: 15, fontWeight: '900' },
@@ -757,7 +789,7 @@ const styles = StyleSheet.create({
     instDataLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
     settingsSaveAndDoneBtn: { marginTop: 18, backgroundColor: '#4F46E5', height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', width: '100%' },
     settingsSaveAndDoneTxt: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-    floatingChatWrapper: { position: 'absolute', width: 310, height: 420, backgroundColor: '#FFFFFF', borderRadius: 14, elevation: 12, overflow: 'hidden', zIndex: 99999, borderWidth: 1, borderColor: '#E2E8F0' },
+    floatingChatWrapper: { position: 'absolute', width: 310, height: 420, backgroundColor: '#FFFFFF', borderRadius: 14, elevation: 12, overflow: 'hidden', zIndex: 999, borderWidth: 1, borderColor: '#E2E8F0' },
     maximizedWindow: { position: 'absolute', top: '12%', left: '25%', width: '50%', height: '70%', borderRadius: 16 },
     bubbleDragHeader: { height: 40, backgroundColor: '#0B2545', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10 },
     bubbleHeaderTitle: { color: '#FFFFFF', fontWeight: '700', fontSize: 12, flex: 1 },
