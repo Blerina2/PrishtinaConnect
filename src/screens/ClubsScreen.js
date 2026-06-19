@@ -11,7 +11,6 @@ export default function ClubsScreen() {
     const [clubMessages, setClubMessages] = useState([]);
     const [newMsg, setNewMsg] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(false);
-    // Tab directory controller setup ('all' = Catalog, 'my_clubs' = Enrolled Rooms)
     const [activeMainTab, setActiveMainTab] = useState('all');
 
     const [pendingRequests, setPendingRequests] = useState([]);
@@ -329,7 +328,6 @@ export default function ClubsScreen() {
                     )}
                 </View>
             )}
-            {/* HEADER CONTROLS WITH REVOLUTIONARY CREATION ACTIONS */}
             <View style={styles.clubsHeaderControlRow}>
                 <Text style={[styles.title, themeStyles.text, { marginVertical: 0 }]}>Klubet e Universitetit</Text>
                 <TouchableOpacity style={styles.createNewClubTriggerBtn} onPress={() => setIsCreateModalOpen(true)} activeOpacity={0.85}>

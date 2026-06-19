@@ -22,12 +22,12 @@ export default function MessageBubble({ text, email, isMe, imageUri, fileUri, fi
                     <Image source={{ uri: imageUri }} style={styles.chatMediaImage} resizeMode="cover" />
                 ) : null}
 
-                {/* LOGJIKA E RE: Shfaqja e GIF-eve të përzgjedhura si në Discord */}
+                {/*  Shfaqja e GIF-eve të përzgjedhura si në Discord */}
                 {gifUrl ? (
                     <Image source={{ uri: gifUrl }} style={styles.chatGifMedia} resizeMode="contain" />
                 ) : null}
 
-                {/* LOGJIKA E RE: Shfaqja e Stickers */}
+                {/*  Shfaqja e Stickers */}
                 {stickerUrl ? (
                     <Image source={{ uri: stickerUrl }} style={styles.chatStickerMedia} resizeMode="contain" />
                 ) : null}
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     otherMessageText: { color: '#1F2937' },
     chatMediaImage: { width: 240, height: 160, borderRadius: 12, marginVertical: 4 },
 
-    // STILI I RI: Mbështetja për GIF-e dhe Stickers si në Discord/Telegram
+    // Mbështetja për GIF-e dhe Stickers si në Discord/Telegram
     chatGifMedia: { width: 180, height: 140, borderRadius: 10, marginVertical: 4 },
     chatStickerMedia: { width: 120, height: 120, marginVertical: 4 },
 

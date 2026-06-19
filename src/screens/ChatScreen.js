@@ -14,7 +14,7 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
     const [loading, setLoading] = useState(true);
     const [showTrashMenu, setShowTrashMenu] = useState(false);
 
-    // Controls for the interactive Discord-Style panel drawer matrix
+
     const [activeReactionMenu, setActiveReactionMenu] = useState(null); // Stores { messageId, currentReactions }
     const [currentDrawerTab, setCurrentDrawerTab] = useState('emoji'); // 'emoji' | 'gif' | 'sticker'
 
@@ -179,7 +179,7 @@ export default function ChatScreen({ selectedChannel, onBack, hideHeader }) {
             }
 
             try {
-                // Evaluates if the shared asset looks like a direct link to a document or photo
+
                 const isImage = cleanLink.match(/\.(jpeg|jpg|gif|png)$/) != null;
 
                 await addDoc(collection(db, 'channels', selectedChannel.id, 'messages'), {

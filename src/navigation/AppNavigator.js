@@ -15,7 +15,7 @@ import StudentLifeScreen from '../screens/StudentLifeScreen';
 export default function AppNavigator() {
     const { user, setUser, loading, isDarkMode } = useAuth();
 
-    // RREGULLIMI: Lexojmë tab-in e fundit të mbetur direkt nga localStorage e Chrome për të parandaluar resetimin
+    // Lexojmë tab-in e fundit të mbetur direkt nga localStorage e Chrome për të parandaluar resetimin
     const [currentTab, setCurrentTab] = useState(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
             const savedTab = window.localStorage.getItem('@PrishtinaConnect:currentTab');
@@ -24,7 +24,7 @@ export default function AppNavigator() {
         return 'channels';
     });
 
-    // Funksion i ri inteligjent që ndërron tab-in dhe e ruan atë automatikisht në memorien e browser-it
+    // Funksion  që ndërron tab-in dhe e ruan atë automatikisht në memorien e browser-it
     const ndryshoTabinDheRuaj = (tabId) => {
         setCurrentTab(tabId);
         if (typeof window !== 'undefined' && window.localStorage) {

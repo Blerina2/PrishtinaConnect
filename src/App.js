@@ -11,7 +11,7 @@ function CampusHeaderWrapper() {
     const primaryText = isDarkMode ? '#FFFFFF' : '#0B2545';
     const secondaryText = isDarkMode ? '#94A3B8' : '#64748B';
 
-    // RREGULLIMI: Nëse nuk ka përdorues të kyçur (Faqja e Parë), fshihet Header-i automatikisht
+    // Nëse nuk ka përdorues të kyçur (Faqja e Parë), fshihet Header-i automatikisht
     const shouldShowHeader = user && user.uid;
 
     return (

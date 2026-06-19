@@ -7,7 +7,7 @@ export default function StudentLifeScreen() {
     // Adjusted initial value tab to display the new Calendar section immediately
     const [activeSubSection, setActiveSubSection] = useState('calendar');
 
-    // NEW DATA REAL MATRIX: Official Universiti i Prishtinës academic milestones calendar
+    //  Official Universiti i Prishtinës academic milestones calendar
     const academicCalendar = [
         { id: 'cal1', title: '📝 Afati i Provimeve të Qershorit', date: '15 Qershor - 15 Korrik 2026', scope: 'Provime', priority: 'High', desc: 'Paraqitja e lëndëve në SEMS hapet zyrtarisht më 5 Qershor. Sigurohuni që të shlyeni obligimet financiare.' },
         { id: 'cal2', title: '🎓 Dorëzimi i Temave të Diplomës (Bachelor/Master)', date: 'Deri më 30 Qershor 2026', scope: 'Diplomim', priority: 'Medium', desc: 'Afati i fundit për dorëzimin e punimit të kompletuar te referenti i fakultetit për mbrojtje në Korrik.' },
@@ -68,7 +68,7 @@ export default function StudentLifeScreen() {
                 </TouchableOpacity>
             </ScrollView>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 110 }}>
-                {/* 📅 NEW SECTION: CAMPUS CALENDAR REAL-TIME SCHEDULER TIMELINE */}
+                {/* 📅 CAMPUS CALENDAR REAL-TIME SCHEDULER TIMELINE */}
                 {activeSubSection === 'calendar' && academicCalendar.map(item => (
                     <View key={item.id} style={[styles.infoCard, themeStyles.card]}>
                         <View style={[styles.badge, item.priority === 'High' ? { backgroundColor: '#EF4444' } : item.priority === 'Medium' ? { backgroundColor: '#F59E0B' } : { backgroundColor: '#4F46E5' }]}>
@@ -123,7 +123,7 @@ export default function StudentLifeScreen() {
                     </View>
                 ))}
 
-                {/* 🔥 EXCLUSIVE CAMPUS DISCOUNT VOUCHERS */}
+                {/* 🔥 DISCOUNT VOUCHERS */}
                 {activeSubSection === 'deals' && studentDeals.map(item => (
                     <View key={item.id} style={[styles.infoCard, themeStyles.card]}>
                         <View style={[styles.badge, { backgroundColor: '#EF4444' }]}><Text style={styles.badgeTxt}>{item.discount}</Text></View>
@@ -153,10 +153,7 @@ const styles = StyleSheet.create({
     darkCard: { backgroundColor: '#0F172A', borderColor: 'rgba(79, 70, 229, 0.2)' },
     lightText: { color: '#0B2545' },
     darkText: { color: '#FFFFFF' },
-
     mainTitle: { fontSize: 18, fontWeight: '900', marginVertical: 10, letterSpacing: -0.4 },
-
-    // NEW STYLE: Horizontal scrollable tab row for modern view spacing
     segmentHorizontalScrollView: { paddingVertical: 2, maxHeight: 60, marginBottom: 10 },
     segmentBtn: { paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: '#1E293B', height: 40 },
     segmentActive: { backgroundColor: '#4F46E5' },

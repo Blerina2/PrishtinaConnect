@@ -10,7 +10,7 @@ export const uploadFileToCloud = async (localUri, storageFolder) => {
     try {
         let cleanUri = localUri;
 
-        // KONTROLLI I PLATFORMËS: Nëse jemi në mjedisin e telefonit (jo në Chrome Web)
+        // Nëse jemi në mjedisin e telefonit (jo në Chrome Web)
         if (typeof window === 'undefined' || !window.confirm) {
             cleanUri = localUri.startsWith('file://') ? localUri : `file://${localUri}`;
         } else {

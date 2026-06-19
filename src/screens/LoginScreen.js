@@ -78,7 +78,7 @@ export default function LoginScreen() {
             return;
         }
 
-        // RIKTHYER NE ORIGJINAL: Kontrolli strikt me tekstin e mesazhit tënd të parë
+        // Kontrolli strikt me tekstin e mesazhit tënd të parë
         if (!isUPStudent(cleanEmail)) {
             setError('Qasja u refuzua. Duhet email-i zyrtar @student.uni-pr.edu');
             return;
@@ -151,7 +151,6 @@ export default function LoginScreen() {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <ScrollView contentContainerStyle={[styles.scrollContainer, currentTheme.scrollContainer]} keyboardShouldPersistTaps="handled">
 
-                {/* BUTONI I DUPLIKUAR U HEQ QË HEADER-I NË APP.JS TË JETË I VETMI KONTROLLUES */}
 
                 <View style={[styles.card, currentTheme.card]}>
                     <View style={[styles.logoBackground, isDarkMode ? styles.logoDark : styles.logoLight]}>

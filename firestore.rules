@@ -2,35 +2,62 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // PROFILES: Allows any authenticated user to create or update their profile metrics safely
+    // Helper: Validates if the client request originates from an active authenticated session
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Enforces that a student can only modify records where they are the explicit data owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // PROFILES: Students can read anyone's profile, but can ONLY write to their own explicit document
     match /users/{userId} {
-      allow read, write, update: if request.auth != null;
+      allow read: if isAuthenticated();
+      allow create, update, write: if isOwner(userId);
     }
 
-    // POSTS: Fully unlocked for reading, writing, and deletion for authenticated students
+    // POSTS: Anyone can read or create, but ONLY the original author can edit or delete a post
     match /posts/{postId} {
-      allow read, create, delete, update: if request.auth != null;
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.uid;
     }
 
-    // Traditional dynamic navigation, campus channels, and clubrooms remain working perfectly
-    match /chat_requests/{requestId} { allow read, write: if request.auth != null; }
+    // CHANNELS & MESSAGES: Secure real-time chatting channels
     match /channels/{channelId} {
-      allow read, write: if request.auth != null;
+      // Lejojmë krijimin e plotë të dhomës së bisedës pa kushte bllokuese për anëtarët fillestarë
+      allow read, write, create, update: if isAuthenticated();
+
       match /messages/{messageId} {
-        allow read, create, update, delete: if request.auth != null;
+        //  Shtojmë leje të plotë krijimi dhe shkrimi për dokumentet dhe fotot në chat
+        allow read, create, write: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.uid;
       }
     }
-    match /clubs/{clubId} {
-      allow read, write: if request.auth != null;
-      match /messages/{messageId} {
-        allow read, create, update, delete: if request.auth != null;
-      }
-    }
+
+    // CLUBS & METADATA: Restricts club write/delete scopes safely
     match /custom_clubs/{clubId} {
-      allow read, create, update, delete: if request.auth != null;
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.presidentUid;
     }
-    match /clubs_meta/{metaId} { allow read, write: if request.auth != null; }
-    match /club_requests/{requestId} { allow read, write: if request.auth != null; }
-    match /materials/{materialId} { allow read, create, update, delete: if request.auth != null; }
+
+    match /clubs/{clubId} {
+      allow read, write: if isAuthenticated();
+      match /messages/{messageId} {
+        allow read, create, write: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.uid;
+      }
+    }
+
+    // SYSTEM REGISTRIES: Shared utility channels accessible to any authenticated student
+    match /chat_requests/{requestId} { allow read, write: if isAuthenticated(); }
+    match /clubs_meta/{metaId} { allow read, write: if isAuthenticated(); }
+    match /club_requests/{requestId} { allow read, write: if isAuthenticated(); }
+
+    // Hapim leje të plotë shkrimi ('write') në mënyrë që Chrome të ngarkojë linkun e PDF/Drive pa dështuar
+    match /materials/{materialId} {
+      allow read, create, update, delete, write: if isAuthenticated();
+    }
   }
 }

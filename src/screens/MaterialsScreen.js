@@ -16,7 +16,7 @@ export default function MaterialsScreen() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
-    // NEW STATE: Material text searching filter state tracker
+    //  Material text searching filter state tracker
     const [searchQuery, setSearchQuery] = useState('');
 
     const [localFileUri, setLocalFileUri] = useState(null);
@@ -85,7 +85,6 @@ export default function MaterialsScreen() {
 
         setSubmitting(true);
         try {
-            // We completely bypass uploadFileToCloud and store the dynamic link directly in Firestore
             const matObj = {
                 title: title.trim(),
                 type: 'Drive 📁', // Enforces the Drive visual template
@@ -125,7 +124,6 @@ export default function MaterialsScreen() {
         }
     };
 
-    // INTELLIGENT SEARCH FILTER ENGINE MATCH ROUTINE
     const filteredMaterials = materials.filter(item =>
         item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.type.toLowerCase().includes(searchQuery.toLowerCase())
@@ -205,7 +203,7 @@ export default function MaterialsScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* INTEGRATED TEXT QUERY INPUT SEARCH BAR CONTAINER */}
+
             <View style={styles.searchBarWrapperContainer}>
                 <TextInput
                     style={[styles.searchTextInputField, themeStyles.input]}
@@ -216,7 +214,7 @@ export default function MaterialsScreen() {
                 />
             </View>
 
-            {/* TIMELINE LIST FEED DIRECTORY */}
+
             {loading ? (
                 <View style={styles.center}>
                     <ActivityIndicator size="large" color="#4F46E5" />

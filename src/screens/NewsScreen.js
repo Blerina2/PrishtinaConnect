@@ -92,7 +92,6 @@ export default function NewsScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* FUSHA E RE E KËRKIMIT PËR LAJMET 🔍 */}
             <View style={styles.searchContainer}>
                 <TextInput
                     style={[styles.searchInput, themeStyles.input]}

@@ -147,7 +147,7 @@ export default function ProfileScreen({ user, onLogout }) {
             allowsEditing: true,
             quality: 0.6,
         });
-        // EXPO IMAGE PICKER FIX: Safely reads the array element index to get the uri
+
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const selectedImg = result.assets[0].uri;
             setUploading(true);
@@ -176,7 +176,7 @@ export default function ProfileScreen({ user, onLogout }) {
             allowsEditing: true,
             quality: 0.7,
         });
-        // EXPO IMAGE PICKER FIX: Safely reads the array element index to get the uri
+        //  Safely reads the array element index to get the uri
         if (!result.canceled && result.assets && result.assets.length > 0) {
             setPostImage(result.assets[0].uri);
         }
@@ -201,7 +201,7 @@ export default function ProfileScreen({ user, onLogout }) {
                 finalCloudMediaUrl = await uploadFileToCloud(postImage, 'posts_media');
             }
 
-            // RREGULLIMI: Dërgimi i pastër i të dhënave të autorit dhe UID
+            //  Dërgimi i pastër i të dhënave të autorit dhe UID
             await addDoc(collection(db, 'posts'), {
                 content: postText.trim(),
                 postImgUri: finalCloudMediaUrl,
@@ -241,7 +241,7 @@ export default function ProfileScreen({ user, onLogout }) {
                 bio: inputBio ? inputBio.trim() : ''
             };
 
-            // RREGULLIMI: Nëse studenti ka shkruar diçka te email-i i rikuperimit, e ruajmë. Nëse jo, e anashkalojmë dhe nuk e bllokojmë procesin!
+            //  Nëse studenti ka shkruar diçka te email-i i rikuperimit, e ruajmë. Nëse jo, e anashkalojmë dhe nuk e bllokojmë procesin!
             if (backupEmail && backupEmail.trim()) {
                 dataPayload.backupEmail = backupEmail.trim();
             }
@@ -288,7 +288,7 @@ export default function ProfileScreen({ user, onLogout }) {
     };
 
 
-// 2. FUNKSIONI I RREGULLUAR PËR FSHIRJEN E POSTIMIT
+//  FUNKSIONI  PËR FSHIRJEN E POSTIMIT
     const handleDeletePost = async (postId) => {
         if (!postId) return;
 
@@ -599,7 +599,6 @@ export default function ProfileScreen({ user, onLogout }) {
                 )}
             </ScrollView>
 
-            {/* UPGRADED PROFILE SECURITY & BIOGRAPHY CONFIGURATION SETTINGS MODAL */}
             <Modal animationType="slide" transparent={true} visible={isSettingsOpen} onRequestClose={() => setIsSettingsOpen(false)}>
                 <ScrollView contentContainerStyle={styles.settingsModalScrollWrapper} keyboardShouldPersistTaps="handled">
                     <View style={[styles.settingsModalContent, themeStyles.card]}>
@@ -610,7 +609,6 @@ export default function ProfileScreen({ user, onLogout }) {
                             </TouchableOpacity>
                         </View>
 
-                        {/* BIO TEXT INPUT FIELD TRACK */}
                         <Text style={styles.settingsSectionHeading}>Biografia e Studentit (Bio)</Text>
                         <TextInput
                             style={[styles.settingsInputField, themeStyles.input, { height: 60, textAlignVertical: 'top', paddingTop: 8 }]}
@@ -666,7 +664,6 @@ export default function ProfileScreen({ user, onLogout }) {
                 </ScrollView>
             </Modal>
 
-            {/* FLOATING DIRECT PRIVATE CONVERSATION OVERLAY MOUNT PORTAL VIEWPORT LAYOUT */}
             {activeChatSession && (
                 <View style={[styles.floatingChatWrapper, isMaximized ? styles.maximizedWindow : { bottom: chatPosition.y, right: chatPosition.x }]}>
                     <View style={styles.bubbleDragHeader}>
@@ -734,18 +731,7 @@ const styles = StyleSheet.create({
     submitPostBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
     submitPostBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
     emptyFeedTextNode: { textAlign: 'center', color: '#94A3B8', marginVertical: 30, fontSize: 13, fontStyle: 'italic' },
-
-    // RREGULLIMI KRYESOR: feedCard tani pozicionohet mbi shtresat e modaleve kur nuk janë aktive
-    feedCard: {
-        width: '100%',
-        padding: 14,
-        borderRadius: 16,
-        marginVertical: 6,
-        borderWidth: 1,
-        zIndex: 10,
-        elevation: 3
-    },
-
+    feedCard: {width: '100%', padding: 14, borderRadius: 16, marginVertical: 6, borderWidth: 1, zIndex: 10, elevation: 3},
     feedContent: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
     myPostFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.03)', paddingTop: 8 },
     likesCountText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
@@ -773,8 +759,6 @@ const styles = StyleSheet.create({
     commentInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, width: '100%' },
     commentField: { flex: 1, height: 34, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, fontSize: 12 },
     commentSubmitBtn: { width: 34, height: 34, backgroundColor: '#10B981', borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-
-    // RREGULLIMI: Modali dhe dritaret lundruese u kaluan në parametra të pastër pa zënë ekranin kur nuk përdoren
     settingsModalScrollWrapper: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
     settingsModalContent: { width: '100%', maxWidth: 380, borderRadius: 24, padding: 20, borderWidth: 1, elevation: 12 },
     settingsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },

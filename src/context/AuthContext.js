@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // RREGULLIMI I RI: Lexojmë temën direkt nga localStorage e Chrome në mënyrë sinkrone për të shmangur ekranin e bardhë
+    // Lexojmë temën direkt nga localStorage e Chrome në mënyrë sinkrone
     const [isDarkMode, setIsDarkMode] = useState(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
             const savedTheme = window.localStorage.getItem('@PrishtinaConnect:theme');
